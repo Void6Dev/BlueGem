@@ -1,0 +1,10 @@
+# Всё, что нужно BlueGem API. Хранилище — SQLite из стандартной библиотеки,
+# внешняя БД не требуется. Версии совпадают с текущим backend/.venv.
+fastapi==0.139.0
+uvicorn[standard]==0.51.0
+pydantic==2.13.4
+python-dotenv==1.2.2
+
+# Нужны только старой mongo-версии (server.mongo.bak.py), активному серверу — нет:
+# motor==3.7.1
+# pymongo==4.17.0

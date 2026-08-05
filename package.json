@@ -1,0 +1,24 @@
+{
+  "name": "bluegem",
+  "productName": "BlueGem",
+  "version": "1.1.0",
+  "private": true,
+  "description": "BlueGem — визуальный конструктор миров: персонажи, фракции, локации и события на одном холсте",
+  "author": "BlueGem",
+  "license": "UNLICENSED",
+  "main": "electron/main.js",
+  "scripts": {
+    "postinstall": "node scripts/make-icons.mjs",
+    "icon": "node scripts/make-icons.mjs",
+    "dev": "node scripts/dev.mjs",
+    "start": "electron .",
+    "build:backend": "node scripts/build-backend.mjs",
+    "build": "node scripts/build.mjs",
+    "dist": "node scripts/build.mjs && electron-builder --win nsis portable",
+    "dist:dir": "node scripts/build.mjs && electron-builder --win dir"
+  },
+  "devDependencies": {
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3"
+  }
+}

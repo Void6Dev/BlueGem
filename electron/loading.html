@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self'" />
+    <title>BlueGem</title>
+    <style>
+      /* Заставка на те секунды, пока поднимается встроенный сервер.
+         Цвета — те же переменные, что и в приложении, чтобы переход не резал глаз. */
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+        background: #0a0a0a;
+        color: #e7e7e9;
+        font: 400 14px/1.5 "Segoe UI", system-ui, sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      .mark {
+        width: 96px;
+        height: 96px;
+        border-radius: 24px;
+        display: block;
+        filter: drop-shadow(0 18px 45px rgba(56, 132, 255, 0.35));
+        animation: breathe 2.4s ease-in-out infinite;
+      }
+      .title { font-size: 20px; letter-spacing: 0.01em; }
+      .hint { font-size: 12.5px; color: #8b8b93; }
+      .bar { width: 190px; height: 2px; border-radius: 2px; background: #232326; overflow: hidden; }
+      .bar i { display: block; width: 40%; height: 100%; background: #2f9bff; animation: slide 1.4s ease-in-out infinite; }
+      @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+      @keyframes slide { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+      @media (prefers-reduced-motion: reduce) {
+        .mark, .bar i { animation: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <img class="mark" src="app-icon.png" alt="" />
+    <div class="title">BlueGem</div>
+    <div class="bar"><i></i></div>
+    <div class="hint">Запускаю локальный сервер…</div>
+  </body>
+</html>

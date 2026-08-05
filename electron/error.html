@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>BlueGem — не запустилось</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 28px;
+        background: #0a0a0a;
+        color: #e7e7e9;
+        font: 400 14px/1.6 "Segoe UI", system-ui, sans-serif;
+      }
+      .card { width: 100%; max-width: 660px; }
+      h1 { font-size: 22px; font-weight: 600; margin: 0 0 8px; }
+      p.lead { margin: 0 0 20px; color: #a1a1aa; }
+      pre {
+        margin: 0 0 18px;
+        padding: 14px 16px;
+        max-height: 260px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #121214;
+        border: 1px solid #232326;
+        border-radius: 10px;
+        color: #b9b9c0;
+        font: 400 12px/1.55 "Cascadia Mono", "Consolas", monospace;
+      }
+      .path { color: #6f6f78; font-size: 12px; margin: 0 0 22px; word-break: break-all; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; }
+      button {
+        appearance: none;
+        border: 1px solid #2a2a2e;
+        background: #17171a;
+        color: #e7e7e9;
+        border-radius: 999px;
+        padding: 9px 18px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      button.primary { background: #1e6fd9; border-color: #1e6fd9; color: #fff; }
+      button:hover { filter: brightness(1.12); }
+      .badge {
+        display: inline-block;
+        margin-bottom: 14px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        background: rgba(225, 29, 72, 0.14);
+        color: #fb7185;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <span class="badge">Ошибка запуска</span>
+      <h1 id="message">Не удалось запустить BlueGem</h1>
+      <p class="lead">
+        Данные проектов не пострадали — они лежат в локальной базе и никуда не делись.
+        Ниже то, что сообщила программа.
+      </p>
+      <pre id="details">—</pre>
+      <p class="path" id="logline"></p>
+      <div class="row">
+        <button class="primary" id="retry">Перезапустить</button>
+        <button id="openLog">Показать лог</button>
+        <button id="copy">Скопировать текст ошибки</button>
+      </div>
+    </div>
+
+    <script>
+      // Подробности приходят в query-строке от основного процесса.
+      const params = new URLSearchParams(location.search);
+      const message = params.get("message") || "Неизвестная ошибка";
+      const details = params.get("details") || "Дополнительных сведений нет.";
+      const logFile = params.get("log") || "";
+
+      document.getElementById("message").textContent = message;
+      document.getElementById("details").textContent = details;
+      document.getElementById("logline").textContent = logFile ? `Полный лог: ${logFile}` : "";
+
+      const bridge = window.bluegem || {};
+      document.getElementById("retry").onclick = () => bridge.restart?.();
+      document.getElementById("openLog").onclick = () => bridge.openLog?.();
+      document.getElementById("copy").onclick = async (e) => {
+        await navigator.clipboard.writeText(`${message}\n\n${details}`);
+        e.target.textContent = "Скопировано";
+      };
+      if (!logFile) document.getElementById("openLog").style.display = "none";
+    </script>
+  </body>
+</html>

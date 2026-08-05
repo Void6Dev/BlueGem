@@ -1,0 +1,71 @@
+# Упаковка BlueGem в установщик и портативный exe.
+# Запуск: npm run dist (сначала соберёт фронтенд и сервер, см. scripts/build.mjs)
+appId: com.bluegem.app
+productName: BlueGem
+copyright: BlueGem
+
+directories:
+  output: release
+  buildResources: build
+
+# В asar кладём только оболочку: исходники фронтенда и питона там не нужны —
+# первый уже собран в app-ui, второй заморожен в backend/.
+files:
+  - electron/**/*
+  - package.json
+  - "!**/*.map"
+
+extraResources:
+  # Собранный интерфейс — его отдаёт встроенный сервер (BG_STATIC_DIR).
+  - from: fronend/build
+    to: app-ui
+    filter: ["**/*", "!**/*.map"]
+  # Замороженный FastAPI + SQLite: exe со всеми зависимостями, python не нужен.
+  - from: backend/dist/bluegem-backend
+    to: backend
+
+# Нативных модулей нет — пересборка только тратит время.
+npmRebuild: false
+
+win:
+  icon: build/icon.ico
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+fileAssociations:
+  - ext: bgproj
+    name: BlueGem Project
+    description: Проект BlueGem
+    icon: build/file-icon.ico
+    role: Editor
+  # Файлы, выгруженные до переименования, продолжают открываться двойным кликом.
+  - ext: swproj
+    name: BlueGem Project (старое расширение)
+    description: Проект BlueGem
+    icon: build/file-icon.ico
+    role: Editor
+
+nsis:
+  # Обычный установщик с выбором папки, а не «молчаливая» установка.
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: BlueGem
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  # Проекты пользователя при удалении программы не трогаем.
+  deleteAppDataOnUninstall: false
+  artifactName: ${productName}-Setup-${version}.${ext}
+
+portable:
+  artifactName: ${productName}-${version}-portable.exe
+  # Портативная сборка держит данные рядом с собой (см. electron/main.js).
+  unpackDirName: BlueGem
