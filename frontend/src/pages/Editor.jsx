@@ -1167,7 +1167,7 @@ function EditorInner() {
     ...(settings?.nodeTypes || []).slice(0, 9).map((t, i) => ({
       id: `new-${t.id}`,
       label: tr("palette.newNode", { type: t.label }),
-      hint: t.id === "note" ? "N" : String(i + 1),
+      hint: t.id === "note" ? "Ctrl+N" : `Ctrl+${i + 1}`,
       icon: Plus,
       run: () => addNode(t.id),
     })),
@@ -1234,16 +1234,19 @@ function EditorInner() {
         duplicateNode(selectedNode || rfNodes.find((n) => n.selected)?.data);
         return;
       }
+      // Создание узлов — под Ctrl: голые N и цифры мешали печатать в холсте
+      // и срабатывали случайно.
+      if (mod && key === "n") { e.preventDefault(); addNode("note"); return; }
+      if (mod && /^[1-9]$/.test(key)) {
+        const t = (settings?.nodeTypes || [])[Number(key) - 1];
+        if (t) { e.preventDefault(); addNode(t.id); }
+        return;
+      }
       if (mod) return;
       if (key === "g") { e.preventDefault(); setFocusMode((v) => !v); }
-      else if (key === "n") { e.preventDefault(); addNode("note"); }
       else if (key === "f") { e.preventDefault(); rf.fitView({ padding: 0.2, duration: 400 }); }
       else if (key === "l") { e.preventDefault(); runLayout("layered"); }
       else if (e.key === "?" || (e.shiftKey && e.key === "/")) { e.preventDefault(); setShowShortcuts((v) => !v); }
-      else if (/^[1-9]$/.test(key)) {
-        const t = (settings?.nodeTypes || [])[Number(key) - 1];
-        if (t) { e.preventDefault(); addNode(t.id); }
-      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1826,7 +1829,7 @@ function EditorInner() {
             <div className="text-center max-w-md px-6 animate-fade-up">
               <Network className="w-10 h-10 sw-text-dim mx-auto mb-4" />
               <p className="font-serif-title text-2xl tracking-tight mb-1">{tr("editor.emptyCanvas")}</p>
-              <p className="sw-text-dim text-sm">{tr("editor.emptyCanvasHint", { key: "N" })}</p>
+              <p className="sw-text-dim text-sm">{tr("editor.emptyCanvasHint", { key: "Ctrl+N" })}</p>
               <div className="mt-5 flex flex-wrap items-center justify-center gap-2 pointer-events-auto">
                 {(settings.nodeTypes || []).slice(0, 4).map((t) => (
                   <button

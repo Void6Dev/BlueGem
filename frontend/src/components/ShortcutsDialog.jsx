@@ -29,8 +29,8 @@ const GROUPS = [
   {
     id: "nodes",
     items: [
-      ["N", "newNote"],
-      ["1 … 9", "newTyped"],
+      ["Ctrl + N", "newNote"],
+      ["Ctrl + 1 … 9", "newTyped"],
       ["doubleClick", "doubleClickHint", true],
       ["Ctrl + D", "duplicate"],
       ["Ctrl + S", "saveNode"],
