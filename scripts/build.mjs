@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const FRONTEND = join(ROOT, "fronend");
+const FRONTEND = join(ROOT, "frontend");
 
 function step(label, cmd, args, options = {}) {
   console.log(`\n=== ${label} ===`);
@@ -48,7 +48,7 @@ step("интерфейс", process.execPath, [join(FRONTEND, "node_modules", "@c
 });
 
 if (!existsSync(join(FRONTEND, "build", "index.html"))) {
-  console.error("\nИнтерфейс не собрался: fronend/build/index.html отсутствует.");
+  console.error("\nИнтерфейс не собрался: frontend/build/index.html отсутствует.");
   process.exit(1);
 }
 

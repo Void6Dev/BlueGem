@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 import os
 import json
+import re
 import sqlite3
 import logging
 from contextlib import contextmanager
@@ -77,6 +78,7 @@ def init_db():
                 tags TEXT NOT NULL DEFAULT '[]',
                 image TEXT DEFAULT '',
                 date TEXT DEFAULT '',
+                dates TEXT NOT NULL DEFAULT '[]',
                 canvas TEXT DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS edges (
@@ -97,13 +99,85 @@ def init_db():
         # Migrate pre-existing databases created before these columns existed.
         _ensure_columns(conn, "nodes", {
             "tags": "TEXT NOT NULL DEFAULT '[]'", "image": "TEXT DEFAULT ''",
-            "date": "TEXT DEFAULT ''", "canvas": "TEXT DEFAULT ''",
+            "date": "TEXT DEFAULT ''", "dates": "TEXT NOT NULL DEFAULT '[]'",
+            "canvas": "TEXT DEFAULT ''",
         })
         _ensure_columns(conn, "edges", {"relType": "TEXT DEFAULT ''", "color": "TEXT DEFAULT ''"})
+        migrate_legacy_dates(conn)
+
+
+# ---------- Chronology ----------
+# Дата узла перестала быть строкой: теперь это список записей вида
+# {id, key, label, start, end}, где start/end — структурные значения
+# (см. frontend/src/lib/chrono/dates.js). Строковое поле `date` остаётся в базе
+# нетронутым: по нему восстанавливаются старые проекты и старые файлы экспорта.
+_LEADING_YEAR = re.compile(r"^\s*(-?\d{1,9})\s*$")
+
+
+def legacy_date_entries(text: str) -> List[dict]:
+    """Превратить старую свободную строку даты в одну структурную запись.
+
+    Чистое число становится точным годом — это подавляющее большинство
+    записей. Всё остальное («перед войной», «Третья эпоха, 412») сохраняется
+    как дата без разбора: текст виден пользователю и не теряется, а на шкале
+    такая запись живёт в своей эпохе или в списке «без даты».
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+    m = _LEADING_YEAR.match(text)
+    start = ({"kind": "exact", "y": int(m.group(1)), "m": None, "d": None}
+             if m else {"kind": "unknown", "raw": text})
+    return [{"id": "legacy", "key": "date", "label": "", "start": start, "end": None}]
+
+
+def remap_date_refs(entries: Any, id_map: Dict[str, str]) -> List[dict]:
+    """Переписать ссылки относительных дат на новые id узлов (копия, импорт).
+
+    Ссылку на узел, которого нет в наборе, оставляем как есть: дата станет
+    неразрешённой и будет честно показана как «связь потеряна», а не тихо
+    привяжется к чужому узлу.
+    """
+    if not isinstance(entries, list):
+        return []
+    out = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        entry = dict(entry)
+        for edge in ("start", "end"):
+            value = entry.get(edge)
+            if isinstance(value, dict) and isinstance(value.get("rel"), dict):
+                rel = dict(value["rel"])
+                rel["nodeId"] = id_map.get(rel.get("nodeId"), rel.get("nodeId"))
+                entry[edge] = {**value, "rel": rel}
+        out.append(entry)
+    return out
+
+
+def migrate_legacy_dates(conn):
+    """Однократный перенос строковых дат в структурные. Идемпотентен."""
+    rows = conn.execute(
+        "SELECT id, date FROM nodes WHERE dates = '[]' AND date IS NOT NULL AND date != ''"
+    ).fetchall()
+    for r in rows:
+        entries = legacy_date_entries(r["date"])
+        if entries:
+            conn.execute("UPDATE nodes SET dates = ? WHERE id = ?",
+                         (json.dumps(entries, ensure_ascii=False), r["id"]))
 
 
 app = FastAPI(title="BlueGem API", version="1.1.0")
 api_router = APIRouter(prefix="/api")
+
+
+def fail(status: int, code: str, message: str) -> HTTPException:
+    """Ошибка с кодом: подпись пользователю подбирает интерфейс на своём языке.
+
+    `message` остаётся английским запасным вариантом для тех, кто ходит в API
+    напрямую (например, через /docs).
+    """
+    return HTTPException(status, {"code": code, "message": message})
 
 
 def now_iso():
@@ -115,13 +189,48 @@ def touch_project(conn, project_id: str):
     conn.execute("UPDATE projects SET updatedAt = ? WHERE id = ?", (now_iso(), project_id))
 
 
-DEFAULT_NODE_TYPES = [
-    {"id": "character", "label": "Персонаж", "color": "#e11d48", "icon": "User"},
-    {"id": "faction", "label": "Фракция", "color": "#7c3aed", "icon": "Flag"},
-    {"id": "location", "label": "Локация", "color": "#059669", "icon": "MapPin"},
-    {"id": "event", "label": "Событие", "color": "#d97706", "icon": "Calendar"},
-    {"id": "note", "label": "Заметка", "color": "#64748b", "icon": "FileText"},
-]
+# Подписи типов и первого холста — единственный текст, который сервер кладёт
+# в данные пользователя. Язык приходит от интерфейса при создании проекта;
+# дальше это уже содержимое проекта, и само оно не переводится.
+# Палитра нормирована по OKLCH (L 0.62, C 0.17, тон разнесён на 32°+) —
+# см. frontend/src/lib/settings.js: TYPE_COLORS. Заметка остаётся нейтральной:
+# это тип «по умолчанию», ему цветом выделяться незачем.
+NODE_TYPE_COLORS = {
+    "character": ("#E8465E", "User"),
+    "faction": ("#9A63E8", "Flag"),
+    "location": ("#17A46F", "MapPin"),
+    "event": ("#C98122", "Calendar"),
+    "note": ("#6B7280", "FileText"),
+}
+
+NODE_TYPE_LABELS = {
+    "en": {"character": "Character", "faction": "Faction", "location": "Location",
+           "event": "Event", "note": "Note"},
+    "ru": {"character": "Персонаж", "faction": "Фракция", "location": "Локация",
+           "event": "Событие", "note": "Заметка"},
+}
+
+MAIN_CANVAS_LABELS = {"en": "Main", "ru": "Основной"}
+DEFAULT_LANG = "en"
+
+
+def node_types_for(lang: str):
+    labels = NODE_TYPE_LABELS.get(lang, NODE_TYPE_LABELS[DEFAULT_LANG])
+    return [
+        {"id": key, "label": labels[key], "color": color, "icon": icon}
+        for key, (color, icon) in NODE_TYPE_COLORS.items()
+    ]
+
+
+def default_settings(lang: str = DEFAULT_LANG) -> dict:
+    return {
+        **DEFAULT_SETTINGS,
+        "nodeTypes": node_types_for(lang),
+        "canvases": [{"id": "main", "label": MAIN_CANVAS_LABELS.get(lang, MAIN_CANVAS_LABELS[DEFAULT_LANG])}],
+    }
+
+
+DEFAULT_NODE_TYPES = node_types_for(DEFAULT_LANG)
 
 DEFAULT_SETTINGS = {
     "theme": "dark",
@@ -133,7 +242,12 @@ DEFAULT_SETTINGS = {
     "snapToGrid": False,
     "animatedEdges": False,
     "nodeTypes": DEFAULT_NODE_TYPES,
-    "canvases": [{"id": "main", "label": "Основной"}],
+    "canvases": [{"id": "main", "label": MAIN_CANVAS_LABELS[DEFAULT_LANG]}],
+    # Календарь мира и его эпохи. null — «пользователь ничего не настраивал»:
+    # интерфейс подставит календарь по умолчанию (frontend/src/lib/chrono).
+    # Держать эталон в одном месте — в JS — дешевле, чем повторять его здесь.
+    "calendar": None,
+    "eras": [],
 }
 
 
@@ -152,27 +266,32 @@ class NodeModel(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     projectId: str
     typeId: str = "note"
-    title: str = "Новый узел"
+    # Настоящее название подставляет интерфейс — здесь только запасное значение.
+    title: str = "New node"
     description: str = ""
     fields: List[Field_] = []
     position: NodePosition = Field(default_factory=NodePosition)
     tags: List[str] = []
     image: str = ""
-    # Free-form chronology label ("1024", "3-я эпоха", "перед войной") — never a number.
+    # Legacy free-form chronology label. Kept so old exports still import;
+    # the app writes `dates` instead.
     date: str = ""
+    # Structured chronology: [{id, key, label, start, end}] — see chrono/dates.js.
+    dates: List[Dict[str, Any]] = []
     canvas: str = ""
     createdAt: str = Field(default_factory=now_iso)
 
 
 class NodeCreate(BaseModel):
     typeId: str = "note"
-    title: str = "Новый узел"
+    title: str = "New node"
     description: str = ""
     fields: List[Field_] = []
     position: NodePosition = Field(default_factory=NodePosition)
     tags: List[str] = []
     image: str = ""
     date: str = ""
+    dates: List[Dict[str, Any]] = []
     canvas: str = ""
 
 
@@ -185,6 +304,7 @@ class NodeUpdate(BaseModel):
     tags: Optional[List[str]] = None
     image: Optional[str] = None
     date: Optional[str] = None
+    dates: Optional[List[Dict[str, Any]]] = None
     canvas: Optional[str] = None
 
 
@@ -237,6 +357,8 @@ class ProjectModel(BaseModel):
 class ProjectCreate(BaseModel):
     name: str
     description: str = ""
+    # Язык интерфейса: на нём заводятся типы узлов и первый холст.
+    lang: str = DEFAULT_LANG
 
 
 class ProjectUpdate(BaseModel):
@@ -283,6 +405,7 @@ def node_row(r) -> dict:
         "image": (r["image"] if "image" in r.keys() else "") or "",
         # Legacy rows may hold an integer here — the API contract is a string.
         "date": str((r["date"] if "date" in r.keys() else "") or ""),
+        "dates": json.loads((r["dates"] if "dates" in r.keys() else None) or "[]"),
         "canvas": (r["canvas"] if "canvas" in r.keys() else "") or "",
         "createdAt": r["createdAt"],
     }
@@ -320,7 +443,9 @@ def list_projects():
 
 @api_router.post("/projects", response_model=ProjectModel)
 def create_project(payload: ProjectCreate):
-    project = ProjectModel(**payload.model_dump())
+    data = payload.model_dump()
+    lang = data.pop("lang", DEFAULT_LANG)
+    project = ProjectModel(**data, settings=default_settings(lang))
     d = project.model_dump()
     with db() as conn:
         conn.execute(
@@ -337,7 +462,7 @@ def get_project(project_id: str):
     with db() as conn:
         row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
         if not row:
-            raise HTTPException(404, "Проект не найден")
+            raise fail(404, "projectNotFound", "Project not found")
         counts = _counts(conn).get(project_id)
     return project_row(row, counts)
 
@@ -347,7 +472,7 @@ def update_project(project_id: str, payload: ProjectUpdate):
     with db() as conn:
         row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
         if not row:
-            raise HTTPException(404, "Проект не найден")
+            raise fail(404, "projectNotFound", "Project not found")
         doc = project_row(row)
         updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
         updates["updatedAt"] = now_iso()
@@ -377,7 +502,7 @@ def export_project(project_id: str):
     with db() as conn:
         row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
         if not row:
-            raise HTTPException(404, "Проект не найден")
+            raise fail(404, "projectNotFound", "Project not found")
         project = project_row(row)
         nodes = [node_row(r) for r in conn.execute(
             "SELECT * FROM nodes WHERE projectId = ?", (project_id,)).fetchall()]
@@ -405,20 +530,26 @@ def _insert_snapshot(conn, name: str, description: str, settings: dict,
         (d["id"], d["name"], d["description"], json.dumps(d["settings"]),
          d["createdAt"], d["updatedAt"]),
     )
-    id_map = {}
+    # Идентификаторы раздаём заранее: относительные даты ссылаются на другие
+    # узлы, и эти ссылки надо переписать на новые id — иначе копия проекта
+    # потеряет всю цепочку «через 5 дней после...».
+    id_map = {n.get("id"): str(uuid.uuid4()) for n in nodes}
     for n in nodes:
-        new_id = str(uuid.uuid4())
-        id_map[n.get("id")] = new_id
+        new_id = id_map[n.get("id")]
         pos = n.get("position") or {}
+        entries = n.get("dates")
+        if not entries:
+            entries = legacy_date_entries(str(n.get("date", "") or ""))
         conn.execute(
             "INSERT INTO nodes (id, projectId, typeId, title, description, fields, position, "
-            "tags, image, date, canvas, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "tags, image, date, dates, canvas, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (new_id, d["id"], n.get("typeId", "note"), n.get("title", ""),
              n.get("description", ""), json.dumps(n.get("fields") or []),
              json.dumps({"x": pos.get("x", 0), "y": pos.get("y", 0)}),
              json.dumps(n.get("tags") or []), n.get("image", "") or "",
-             str(n.get("date", "") or ""), n.get("canvas", "") or "",
-             n.get("createdAt") or now_iso()),
+             str(n.get("date", "") or ""),
+             json.dumps(remap_date_refs(entries, id_map), ensure_ascii=False),
+             n.get("canvas", "") or "", n.get("createdAt") or now_iso()),
         )
     for e in edges:
         src, tgt = id_map.get(e.get("source")), id_map.get(e.get("target"))
@@ -437,9 +568,9 @@ def _insert_snapshot(conn, name: str, description: str, settings: dict,
 @api_router.post("/projects/import", response_model=ProjectModel)
 def import_project(payload: ProjectImport):
     src = payload.project or {}
-    name = (payload.name or src.get("name") or "Импортированный проект").strip()
+    name = (payload.name or src.get("name") or "Imported project").strip()
     if not name:
-        raise HTTPException(400, "У проекта должно быть название")
+        raise fail(400, "projectNameRequired", "A project needs a name")
     with db() as conn:
         return _insert_snapshot(conn, name, src.get("description", ""),
                                 src.get("settings") or {}, payload.nodes, payload.edges)
@@ -450,7 +581,7 @@ def duplicate_project(project_id: str):
     snapshot = export_project(project_id)
     p = snapshot["project"]
     with db() as conn:
-        return _insert_snapshot(conn, f"{p['name']} (копия)", p["description"],
+        return _insert_snapshot(conn, f"{p['name']} (copy)", p["description"],
                                 p["settings"], snapshot["nodes"], snapshot["edges"])
 
 
@@ -473,11 +604,12 @@ def create_node(project_id: str, payload: NodeCreate):
     d = node.model_dump()
     with db() as conn:
         conn.execute(
-            "INSERT INTO nodes (id, projectId, typeId, title, description, fields, position, tags, image, date, canvas, createdAt) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO nodes (id, projectId, typeId, title, description, fields, position, tags, image, date, dates, canvas, createdAt) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (d["id"], d["projectId"], d["typeId"], d["title"], d["description"],
              json.dumps(d["fields"]), json.dumps(d["position"]),
-             json.dumps(d["tags"]), d["image"], d["date"], d["canvas"], d["createdAt"]),
+             json.dumps(d["tags"]), d["image"], d["date"],
+             json.dumps(d["dates"], ensure_ascii=False), d["canvas"], d["createdAt"]),
         )
         touch_project(conn, project_id)
     return d
@@ -501,17 +633,18 @@ def update_node(node_id: str, payload: NodeUpdate):
     with db() as conn:
         row = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
         if not row:
-            raise HTTPException(404, "Узел не найден")
+            raise fail(404, "nodeNotFound", "Node not found")
         doc = node_row(row)
         updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
         doc.update(updates)
         conn.execute(
-            "UPDATE nodes SET typeId = ?, title = ?, description = ?, fields = ?, position = ?, tags = ?, image = ?, date = ?, canvas = ? "
+            "UPDATE nodes SET typeId = ?, title = ?, description = ?, fields = ?, position = ?, tags = ?, image = ?, date = ?, dates = ?, canvas = ? "
             "WHERE id = ?",
             (doc["typeId"], doc["title"], doc["description"],
              json.dumps(doc["fields"]), json.dumps(doc["position"]),
              json.dumps(doc.get("tags", [])), doc.get("image", ""),
-             doc.get("date", ""), doc.get("canvas", ""), node_id),
+             doc.get("date", ""), json.dumps(doc.get("dates", []), ensure_ascii=False),
+             doc.get("canvas", ""), node_id),
         )
         touch_project(conn, doc["projectId"])
     return doc
@@ -531,7 +664,7 @@ def delete_node(node_id: str):
 @api_router.post("/projects/{project_id}/edges", response_model=EdgeModel)
 def create_edge(project_id: str, payload: EdgeCreate):
     if payload.source == payload.target:
-        raise HTTPException(400, "Нельзя связать узел с самим собой")
+        raise fail(400, "selfLink", "A node cannot be linked to itself")
     with db() as conn:
         existing = conn.execute(
             "SELECT * FROM edges WHERE projectId = ? AND source = ? AND target = ?",
@@ -556,7 +689,7 @@ def update_edge(edge_id: str, payload: EdgeUpdate):
     with db() as conn:
         row = conn.execute("SELECT * FROM edges WHERE id = ?", (edge_id,)).fetchone()
         if not row:
-            raise HTTPException(404, "Связь не найдена")
+            raise fail(404, "edgeNotFound", "Link not found")
         doc = edge_row(row)
         updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
         doc.update(updates)
@@ -607,12 +740,12 @@ if STATIC_DIR and STATIC_DIR.is_dir():
         """Serve a real file when it exists, otherwise index.html (client routing)."""
         # An unknown /api path must stay a 404 JSON error, not the HTML shell.
         if full_path.startswith("api/") or full_path == "api":
-            raise HTTPException(404, "Не найдено")
+            raise fail(404, "notFound", "Not found")
         candidate = (STATIC_DIR / full_path).resolve()
         if full_path and candidate.is_file() and candidate.is_relative_to(STATIC_DIR.resolve()):
             return FileResponse(candidate)
         if not _INDEX.is_file():
-            raise HTTPException(500, "Интерфейс не собран")
+            raise fail(500, "uiNotBuilt", "The interface has not been built")
         # index.html must never be cached: a stale shell would point at
         # asset names that no longer exist after an update.
         return FileResponse(_INDEX, headers={"Cache-Control": "no-store"})
@@ -631,7 +764,10 @@ if API_TOKEN:
         if path.startswith("/api") and request.method != "OPTIONS":
             sent = request.headers.get("x-bg-token") or request.query_params.get("token")
             if sent != API_TOKEN:
-                return JSONResponse({"detail": "Доступ запрещён"}, status_code=403)
+                return JSONResponse(
+                    {"detail": {"code": "accessDenied", "message": "Access denied"}},
+                    status_code=403,
+                )
         return await call_next(request)
 
 _origins = [o for o in os.environ.get('CORS_ORIGINS', '*').split(',') if o]

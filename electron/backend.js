@@ -17,6 +17,7 @@ const net = require("node:net");
 const path = require("node:path");
 
 const log = require("./logger");
+const { t } = require("./i18n");
 
 const HOST = "127.0.0.1";
 const READY_TIMEOUT_MS = 60_000;
@@ -91,8 +92,8 @@ class Backend {
       const exe = path.join(process.resourcesPath, "backend", "bluegem-backend.exe");
       if (!fs.existsSync(exe)) {
         throw new BackendError(
-          "Серверная часть не найдена в установленном приложении.",
-          `Ожидался файл:\n${exe}\n\nПохоже, установка повреждена — переустановите BlueGem.`,
+          t("backend.missing"),
+          t("backend.missingDetail", { path: exe }),
         );
       }
       return { command: exe, args: [], cwd: path.dirname(exe) };
@@ -101,14 +102,7 @@ class Backend {
     const backendDir = path.join(this.projectRoot, "backend");
     const python = path.join(backendDir, ".venv", "Scripts", "python.exe");
     if (!fs.existsSync(python)) {
-      throw new BackendError(
-        "Не найдено окружение backend/.venv.",
-        [
-          "Для запуска в режиме разработки создайте его:",
-          "  python -m venv backend\\.venv",
-          "  backend\\.venv\\Scripts\\python.exe -m pip install -r backend\\requirements.txt",
-        ].join("\n"),
-      );
+      throw new BackendError(t("backend.noVenv"), t("backend.noVenvDetail"));
     }
     return { command: python, args: [path.join(backendDir, "desktop_main.py")], cwd: backendDir };
   }
@@ -203,16 +197,16 @@ class Backend {
       const details = this.output.join("\n") || (exited?.error ? String(exited.error) : "");
       if (exited) {
         throw new BackendError(
-          `Встроенный сервер завершился с кодом ${exited.code}.`,
-          details || "Сервер не оставил сообщений об ошибке.",
+          t("backend.exited", { code: exited.code }),
+          details || t("backend.silent"),
         );
       }
       throw new BackendError(
-        "Встроенный сервер не ответил за отведённое время.",
-        details || `Проверялся адрес http://${HOST}:${port}/api/health.`,
+        t("backend.timeout"),
+        details || t("backend.checked", { url: `http://${HOST}:${port}/api/health` }),
       );
     }
-    throw new BackendError("Не удалось занять локальный порт для встроенного сервера.", this.output.join("\n"));
+    throw new BackendError(t("backend.noPort"), this.output.join("\n"));
   }
 
   /** Падение сервера уже после старта — окно должно об этом сказать. */
@@ -221,7 +215,7 @@ class Backend {
       if (this.stopping) return;
       log.error(`[backend] неожиданно завершился, код ${code}`);
       this.onCrash?.(new BackendError(
-        `Встроенный сервер остановился (код ${code}).`,
+        t("backend.crashed", { code }),
         this.output.join("\n"),
       ));
     });

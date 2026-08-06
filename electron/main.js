@@ -21,20 +21,22 @@ const log = require("./logger");
 const { Backend, BackendError } = require("./backend");
 const { WindowState, MIN } = require("./window-state");
 const { buildMenu } = require("./menu");
+const i18n = require("./i18n");
+const updater = require("./update");
 
 const APP_ID = "com.bluegem.app";
 const PROJECT_ROOT = path.join(__dirname, "..");
 const MAX_PROJECT_BYTES = 64 * 1024 * 1024;
-const PROJECT_FILTERS = [
+const projectFilters = () => [
   // swproj — расширение прежних выгрузок, открывать их приложение обязано.
-  { name: "Проект BlueGem", extensions: ["bgproj", "swproj", "json"] },
-  { name: "Все файлы", extensions: ["*"] },
+  { name: i18n.t("dialog.projectFilter"), extensions: ["bgproj", "swproj", "json"] },
+  { name: i18n.t("dialog.allFiles"), extensions: ["*"] },
 ];
 
 /** Каталог собранного интерфейса. В разработке его может не быть — тогда dev-сервер. */
 function staticDir() {
   if (app.isPackaged) return path.join(process.resourcesPath, "app-ui");
-  const local = path.join(PROJECT_ROOT, "fronend", "build");
+  const local = path.join(PROJECT_ROOT, "frontend", "build");
   return fs.existsSync(path.join(local, "index.html")) ? local : "";
 }
 
@@ -81,6 +83,8 @@ async function boot() {
   const dataDir = app.getPath("userData");
   const logDir = path.join(dataDir, "logs");
   log.init(logDir);
+  // Язык нужен до создания меню и до первого диалога.
+  log.info(`язык оболочки: ${i18n.init(dataDir, app.getLocale())}`);
   log.info(`версия ${app.getVersion()}, данные: ${dataDir}, упаковано: ${app.isPackaged}`);
 
   hardenSession();
@@ -91,17 +95,16 @@ async function boot() {
   windowState = new WindowState(path.join(dataDir, "window-state.json"));
   createWindow();
 
-  Menu.setApplicationMenu(buildMenu({
-    openProject: chooseProjectFile,
-    send: (cmd) => win?.webContents.send("bg:menu", cmd),
-    dataDir,
-    logFile: () => log.file(),
-    window: () => win,
-  }));
+  applyMenu(dataDir);
 
   pendingProject = await readProjectFile(projectFileFromArgv(process.argv)).catch(() => null);
 
   await startBackend({ dataDir, logDir });
+
+  // Проверка релизов — раз в запуск и в фоне: она не должна задерживать ни
+  // окно, ни сервер, а её неудача (нет сети) не влияет ни на что.
+  updater.init(dataDir);
+  updater.check().catch((e) => log.warn(`проверка обновлений: ${e.message}`));
 }
 
 /**
@@ -136,6 +139,22 @@ function adoptLegacyDatabase(dataDir) {
     // Не смертельно: приложение просто начнёт с пустой базы.
     log.warn(`не удалось перенести прежнюю базу: ${e.message}`);
   }
+}
+
+/** Меню пересобирается целиком: у Electron нет способа переименовать пункты. */
+function applyMenu(dataDir) {
+  Menu.setApplicationMenu(buildMenu({
+    openProject: chooseProjectFile,
+    send: (cmd) => win?.webContents.send("bg:menu", cmd),
+    setLanguage: (lang) => {
+      // Из меню — сообщаем интерфейсу; он переключится и вернёт событие обратно.
+      if (i18n.setLanguage(lang)) applyMenu(dataDir);
+      win?.webContents.send("bg:language", lang);
+    },
+    dataDir,
+    logFile: () => log.file(),
+    window: () => win,
+  }));
 }
 
 async function startBackend({ dataDir, logDir }) {
@@ -182,7 +201,10 @@ function createWindow() {
   });
 
   windowState.manage(win);
-  win.loadFile(path.join(__dirname, "loading.html"));
+  // Подпись на заставке приходит параметром: своего словаря у неё нет.
+  win.loadFile(path.join(__dirname, "loading.html"), {
+    search: new URLSearchParams({ hint: i18n.t("loading.hint") }).toString(),
+  });
 
   win.once("ready-to-show", () => {
     if (windowState.maximized) win.maximize();
@@ -211,8 +233,8 @@ function createWindow() {
     log.error(`окно упало: ${details.reason}`);
     if (!quitting) {
       showFailure(new BackendError(
-        "Окно приложения аварийно закрылось.",
-        `Причина: ${details.reason}. Данные проекта сохранены в базе — нажмите «Перезапустить».`,
+        i18n.t("backend.windowGone"),
+        i18n.t("backend.windowGoneDetail", { reason: details.reason }),
       ));
     }
   });
@@ -237,9 +259,10 @@ function showFailure(err) {
   if (err.details) log.error(err.details);
   if (!win || win.isDestroyed()) return;
   const params = new URLSearchParams({
-    message: err.message || "Неизвестная ошибка",
+    message: err.message || i18n.t("error.title"),
     details: err.details || log.recent(25),
     log: log.file() || "",
+    lang: i18n.getLanguage(),
   });
   win.loadFile(path.join(__dirname, "error.html"), { search: params.toString() });
   if (!win.isVisible()) win.show();
@@ -247,7 +270,7 @@ function showFailure(err) {
 
 function fatal(err) {
   log.error(`не удалось запуститься: ${err?.stack || err}`);
-  dialog.showErrorBox("BlueGem не запустился", String(err?.message || err));
+  dialog.showErrorBox(i18n.t("backend.startFailed"), String(err?.message || err));
   app.exit(1);
 }
 
@@ -266,7 +289,7 @@ async function readProjectFile(file) {
   if (!file) return null;
   const { size } = await fsp.stat(file);
   if (size > MAX_PROJECT_BYTES) {
-    throw new Error(`Файл слишком большой (${Math.round(size / 1048576)} МБ)`);
+    throw new Error(i18n.t("dialog.tooLarge", { size: Math.round(size / 1048576) }));
   }
   return { path: file, content: await fsp.readFile(file, "utf8") };
 }
@@ -288,18 +311,18 @@ async function openProjectFile(file) {
   } catch (err) {
     dialog.showMessageBox(win, {
       type: "error",
-      title: "Не удалось открыть файл",
+      title: i18n.t("dialog.openFailed"),
       message: path.basename(file),
       detail: err.message,
-      buttons: ["Закрыть"],
+      buttons: [i18n.t("about.close")],
     });
   }
 }
 
 async function chooseProjectFile() {
   const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-    title: "Открыть проект BlueGem",
-    filters: PROJECT_FILTERS,
+    title: i18n.t("dialog.openProject"),
+    filters: projectFilters(),
     properties: ["openFile"],
   });
   if (!canceled && filePaths[0]) await openProjectFile(filePaths[0]);
@@ -322,11 +345,11 @@ function registerIpc(dataDir) {
   });
 
   ipcMain.handle("bg:save-file", async (_e, options = {}) => {
-    const { defaultPath = "project.bgproj", content = "", filters = PROJECT_FILTERS } = options;
-    if (typeof content !== "string") return { ok: false, error: "Нечего сохранять" };
+    const { defaultPath = "project.bgproj", content = "", filters = projectFilters() } = options;
+    if (typeof content !== "string") return { ok: false, error: i18n.t("dialog.nothingToSave") };
     try {
       const { canceled, filePath } = await dialog.showSaveDialog(win, {
-        title: "Сохранить как",
+        title: i18n.t("dialog.saveAs"),
         defaultPath: path.join(app.getPath("documents"), path.basename(defaultPath)),
         filters,
       });
@@ -343,8 +366,8 @@ function registerIpc(dataDir) {
   ipcMain.handle("bg:open-file", async (_e, options = {}) => {
     try {
       const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-        title: options.title || "Открыть файл",
-        filters: options.filters || PROJECT_FILTERS,
+        title: options.title || i18n.t("dialog.openProject"),
+        filters: options.filters || projectFilters(),
         properties: ["openFile"],
       });
       if (canceled || !filePaths[0]) return { ok: false, canceled: true };
@@ -365,7 +388,7 @@ function registerIpc(dataDir) {
   ipcMain.handle("bg:ask", async (_e, options = {}) => {
     const buttons = Array.isArray(options.buttons) && options.buttons.length
       ? options.buttons.map(String)
-      : ["ОК"];
+      : [i18n.t("dialog.ok")];
     const { response } = await dialog.showMessageBox(win, {
       type: options.type === "warning" ? "warning" : "question",
       title: options.title || "BlueGem",
@@ -390,10 +413,42 @@ function registerIpc(dataDir) {
     if (file) shell.showItemInFolder(file);
   });
 
+  // Интерфейс переключил язык — подстраиваем меню и системные диалоги.
+  ipcMain.handle("bg:set-language", (_e, lang) => {
+    if (i18n.setLanguage(lang)) {
+      log.info(`язык оболочки: ${lang}`);
+      applyMenu(dataDir);
+    }
+  });
+
   ipcMain.handle("bg:restart", () => {
     log.info("перезапуск по просьбе пользователя");
     app.relaunch();
     app.exit(0);
+  });
+
+  /* ---- обновления ---- */
+
+  ipcMain.handle("bg:update-state", () => updater.state());
+
+  // force приходит от кнопки «Проверить сейчас»; без него берётся суточный кэш.
+  ipcMain.handle("bg:update-check", (_e, options = {}) => updater.check({ force: !!options.force }));
+
+  ipcMain.handle("bg:update-install", async (_e, tag) => {
+    if (typeof tag !== "string" || !tag) return { ok: false, error: "bad-tag" };
+    return updater.install(tag, (progress) => {
+      if (win && !win.isDestroyed()) win.webContents.send("bg:update-progress", progress);
+    });
+  });
+
+  ipcMain.handle("bg:feedback", (_e, options = {}) => {
+    const url = updater.feedbackUrl({
+      title: String(options.title || ""),
+      body: String(options.body || ""),
+      kind: options.kind === "bug" ? "bug" : "feedback",
+    });
+    openExternal(url);
+    return { ok: true, url };
   });
 }
 
@@ -467,7 +522,7 @@ app.on("open-file", (event, file) => {
 process.on("uncaughtException", (err) => {
   log.error(`необработанная ошибка: ${err?.stack || err}`);
   if (win && !win.isDestroyed()) {
-    showFailure(new BackendError("Внутренняя ошибка приложения.", String(err?.stack || err)));
+    showFailure(new BackendError(i18n.t("backend.internal"), String(err?.stack || err)));
   } else {
     fatal(err);
   }

@@ -1,11 +1,15 @@
 "use strict";
-/** Меню приложения. Всё по-русски, как и остальной интерфейс. */
+/** Меню приложения. Подписи берутся из electron/i18n.js и следуют за языком. */
 const { Menu, shell, dialog, app } = require("electron");
+const { t, getLanguage, LANGUAGES } = require("./i18n");
+
+const LANGUAGE_LABELS = { en: "English", ru: "Русский" };
 
 /**
  * @param {object} ctx
  * @param {() => void} ctx.openProject   спросить файл проекта и открыть его
  * @param {(cmd: string) => void} ctx.send  отправить команду в интерфейс
+ * @param {(lang: string) => void} ctx.setLanguage переключить язык из меню
  * @param {string} ctx.dataDir           папка с базой и настройками
  * @param {() => string} ctx.logFile     путь к файлу лога
  * @param {() => Electron.BrowserWindow} ctx.window
@@ -13,51 +17,58 @@ const { Menu, shell, dialog, app } = require("electron");
 function buildMenu(ctx) {
   const template = [
     {
-      label: "Файл",
+      label: t("menu.file"),
       submenu: [
-        { label: "Новый проект", accelerator: "CmdOrCtrl+N", click: () => ctx.send("new-project") },
-        { label: "Открыть проект…", accelerator: "CmdOrCtrl+O", click: () => ctx.openProject() },
+        { label: t("menu.newProject"), accelerator: "CmdOrCtrl+N", click: () => ctx.send("new-project") },
+        { label: t("menu.openProject"), accelerator: "CmdOrCtrl+O", click: () => ctx.openProject() },
         { type: "separator" },
-        {
-          label: "Папка с данными",
-          click: () => shell.openPath(ctx.dataDir),
-        },
+        { label: t("menu.dataFolder"), click: () => shell.openPath(ctx.dataDir) },
         { type: "separator" },
-        { label: "Выход", role: "quit" },
+        { label: t("menu.quit"), role: "quit" },
       ],
     },
     {
-      label: "Правка",
+      label: t("menu.edit"),
       submenu: [
         // Ctrl+Z в приложении возвращает удалённые узлы, поэтому сочетание
         // оставляем странице: пункт меню работает, но клавиши не перехватывает.
-        { label: "Отменить", role: "undo", registerAccelerator: false },
-        { label: "Повторить", role: "redo", registerAccelerator: false },
+        { label: t("menu.undo"), role: "undo", registerAccelerator: false },
+        { label: t("menu.redo"), role: "redo", registerAccelerator: false },
         { type: "separator" },
-        { label: "Вырезать", role: "cut" },
-        { label: "Копировать", role: "copy" },
-        { label: "Вставить", role: "paste" },
-        { label: "Выделить всё", role: "selectAll", registerAccelerator: false },
+        { label: t("menu.cut"), role: "cut" },
+        { label: t("menu.copy"), role: "copy" },
+        { label: t("menu.paste"), role: "paste" },
+        { label: t("menu.selectAll"), role: "selectAll", registerAccelerator: false },
       ],
     },
     {
-      label: "Вид",
+      label: t("menu.view"),
       submenu: [
-        { label: "Обновить", role: "reload" },
-        { label: "Инструменты разработчика", role: "toggleDevTools" },
+        { label: t("menu.reload"), role: "reload" },
+        { label: t("menu.devTools"), role: "toggleDevTools" },
         { type: "separator" },
-        { label: "Масштаб по умолчанию", role: "resetZoom" },
-        { label: "Крупнее", role: "zoomIn" },
-        { label: "Мельче", role: "zoomOut" },
+        { label: t("menu.resetZoom"), role: "resetZoom" },
+        { label: t("menu.zoomIn"), role: "zoomIn" },
+        { label: t("menu.zoomOut"), role: "zoomOut" },
         { type: "separator" },
-        { label: "Во весь экран", role: "togglefullscreen" },
+        { label: t("menu.fullscreen"), role: "togglefullscreen" },
+        { type: "separator" },
+        {
+          label: t("menu.language"),
+          submenu: LANGUAGES.map((id) => ({
+            label: LANGUAGE_LABELS[id] || id,
+            type: "radio",
+            checked: getLanguage() === id,
+            click: () => ctx.setLanguage(id),
+          })),
+        },
       ],
     },
     {
-      label: "Справка",
+      label: t("menu.help"),
       submenu: [
         {
-          label: "Открыть лог",
+          label: t("menu.openLog"),
           click: () => {
             const file = ctx.logFile();
             if (file) shell.showItemInFolder(file);
@@ -65,22 +76,21 @@ function buildMenu(ctx) {
         },
         { type: "separator" },
         {
-          label: "О программе",
+          label: t("menu.about"),
           click: () => {
             dialog.showMessageBox(ctx.window(), {
               type: "info",
-              title: "О программе",
+              title: t("about.title"),
               message: `BlueGem ${app.getVersion()}`,
               detail: [
-                "Визуальный конструктор миров.",
+                t("about.tagline"),
                 "",
-                "Работает полностью на этом компьютере: интернет не нужен,",
-                "данные никуда не отправляются.",
+                t("about.offline"),
                 "",
-                `Данные: ${ctx.dataDir}`,
+                t("about.data", { dir: ctx.dataDir }),
                 `Electron ${process.versions.electron} · Chromium ${process.versions.chrome}`,
               ].join("\n"),
-              buttons: ["Закрыть"],
+              buttons: [t("about.close")],
             });
           },
         },

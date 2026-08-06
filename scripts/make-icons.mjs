@@ -258,7 +258,7 @@ writeFileSync(join(ROOT, "build", "file-icon.ico"), ico);
 // без предварительной сборки иконок.
 const byName = new Map(frames.map((f) => [f.size, f]));
 writeFileSync(join(ROOT, "electron", "app-icon.png"), encodePng(byName.get(128)));
-writeFileSync(join(ROOT, "fronend", "src", "assets", "logo.png"), encodePng(byName.get(256)));
+writeFileSync(join(ROOT, "frontend", "src", "assets", "logo.png"), encodePng(byName.get(256)));
 
 console.log(`[icon] из ${source.width}×${source.height}: build/icon.ico, build/file-icon.ico `
-  + `(${ICO_SIZES.join(", ")} px, 32 бита с альфой), electron/app-icon.png, fronend/src/assets/logo.png`);
+  + `(${ICO_SIZES.join(", ")} px, 32 бита с альфой), electron/app-icon.png, frontend/src/assets/logo.png`);

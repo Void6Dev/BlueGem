@@ -1,0 +1,1048 @@
+/* Шрифты подключены в src/fonts.js — локальными файлами, без обращений в сеть. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* shadcn/ui design tokens (used by @/components/ui/*) */
+@layer base {
+  /* Токены shadcn идут теми же ступенями, что и переменные --sw-*: диалоги и
+     поля не должны выглядеть бледнее остального интерфейса. */
+  :root {
+    --background: 240 20% 5%;
+    --foreground: 0 0% 96%;
+    --card: 240 11% 12%;
+    --card-foreground: 0 0% 96%;
+    --popover: 240 10% 20%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 10% 16%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 240 10% 16%;
+    --muted-foreground: 240 7% 72%;
+    --accent: 240 10% 16%;
+    --accent-foreground: 0 0% 96%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 10% 20%;
+    --input: 240 10% 20%;
+    --ring: 239 84% 67%;
+    --radius: 0.5rem;
+  }
+
+  /* Light theme has to override the shadcn tokens too, otherwise dialogs,
+     inputs and popovers stay dark while the rest of the app turns light. */
+  .sw-light {
+    --background: 0 0% 98%;
+    --foreground: 0 0% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 4%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 40%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 0 0% 9%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+  }
+}
+
+/* Тёмная тема. Пять ступеней поверхности вместо трёх: на почти чёрном фоне
+   глубину даёт не тень (её не видно), а подъём поверхности и верхний
+   внутренний хайлайт — свет сверху, как в физическом мире. Тень остаётся
+   только для отрыва от холста. */
+:root {
+  --sw-bg: #0A0A0F;
+  --sw-surface-0: #141419;
+  --sw-surface: #1B1B22;
+  --sw-surface-2: #24242C;
+  --sw-surface-3: #2E2E38;
+  --sw-elevated: rgba(27, 27, 34, 0.86);
+  --sw-border: #2E2E37;
+  --sw-border-strong: #45454F;
+  --sw-text: #F5F5F6;
+  --sw-text-dim: #AFAFBA;
+  --sw-accent: #6366f1;
+  --sw-font: 'Manrope Variable', sans-serif;
+  --sw-hover: rgba(255, 255, 255, 0.075);
+  --sw-ring: 0 0 0 3px color-mix(in srgb, var(--sw-accent) 28%, transparent);
+  --sw-radius: 10px;
+  --sw-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --sw-ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Верхний хайлайт — общий множитель объёма для всех поверхностей. */
+  --sw-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  --sw-glow: 0 0 0 3px color-mix(in srgb, var(--sw-accent) 20%, transparent);
+
+  /* Лестница высот: 1 — списки и кнопки, 2 — карточки и тулбар,
+     3 — выбранная карточка и боковые панели, 4 — диалоги и палитра. */
+  --sw-elev-1: var(--sw-highlight), 0 1px 2px rgba(0, 0, 0, 0.5);
+  --sw-elev-2: var(--sw-highlight), 0 2px 6px -2px rgba(0, 0, 0, 0.55),
+               0 12px 28px -18px rgba(0, 0, 0, 0.75);
+  --sw-elev-3: var(--sw-highlight), 0 4px 10px -3px rgba(0, 0, 0, 0.6),
+               0 20px 44px -22px rgba(0, 0, 0, 0.85);
+  --sw-elev-4: var(--sw-highlight), 0 8px 18px -6px rgba(0, 0, 0, 0.65),
+               0 36px 72px -30px rgba(0, 0, 0, 0.9);
+  /* Прежние имена — те же ступени, чтобы не переписывать полсотни мест. */
+  --sw-shadow-sm: var(--sw-elev-1);
+  --sw-shadow-md: var(--sw-elev-2);
+  --sw-shadow-lg: var(--sw-elev-3);
+
+  /* Состояния «всё хорошо» и «внимание» — из той же нормированной палитры,
+     что и типы узлов: зелёный кнопки обновления не должен быть ядовитее
+     всего остального интерфейса. */
+  --sw-ok: #17A46F;
+  --sw-warn: #C98122;
+
+  /* Связи — собственный цвет, не цвет рамки инпута. */
+  --sw-edge: #5C5C6B;
+  --sw-edge-hover: #8A8A9C;
+  --sw-edge-w: 2px;
+  --sw-edge-w-hover: 2.5px;
+  --sw-edge-w-selected: 3px;
+}
+
+.sw-light {
+  --sw-bg: #F7F7F6;
+  --sw-surface-0: #FBFBFA;
+  --sw-surface: #FFFFFF;
+  --sw-surface-2: #F1F1EF;
+  --sw-surface-3: #FFFFFF;
+  --sw-elevated: rgba(255, 255, 255, 0.86);
+  --sw-border: #E4E4E2;
+  --sw-border-strong: #C9C9C5;
+  --sw-text: #111112;
+  --sw-text-dim: #6B6B72;
+  --sw-hover: rgba(0, 0, 0, 0.045);
+  /* Тень на светлом — в тон акцента: нейтрально-чёрная выглядит грязной. */
+  --sw-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.7);
+  --sw-elev-1: 0 1px 2px rgba(28, 26, 44, 0.08);
+  --sw-elev-2: 0 2px 6px -2px rgba(28, 26, 44, 0.1), 0 12px 28px -18px rgba(28, 26, 44, 0.3);
+  --sw-elev-3: 0 4px 10px -3px rgba(28, 26, 44, 0.12), 0 20px 44px -22px rgba(28, 26, 44, 0.35);
+  --sw-elev-4: 0 8px 18px -6px rgba(28, 26, 44, 0.14), 0 36px 72px -30px rgba(28, 26, 44, 0.4);
+  --sw-edge: #A5A5B0;
+  --sw-edge-hover: #74747F;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--sw-bg);
+  color: var(--sw-text);
+  font-family: var(--sw-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.28s var(--sw-ease), color 0.28s var(--sw-ease);
+}
+
+/* A soft accent aura behind the whole app — cheap depth, zero layout cost. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(60rem 40rem at 15% -10%, color-mix(in srgb, var(--sw-accent) 11%, transparent), transparent 70%),
+    radial-gradient(50rem 36rem at 110% 10%, color-mix(in srgb, var(--sw-accent) 7%, transparent), transparent 70%);
+  opacity: 0.9;
+}
+.App { position: relative; z-index: 1; }
+
+.font-serif-title {
+  font-family: 'Playfair Display Variable', serif;
+}
+.font-mono-sw {
+  font-family: 'JetBrains Mono Variable', monospace;
+}
+
+.sw-surface {
+  background: var(--sw-surface);
+  border-color: var(--sw-border);
+}
+.sw-surface-2 { background: var(--sw-surface-2); }
+.sw-bg { background: var(--sw-bg); }
+.sw-text-dim { color: var(--sw-text-dim); }
+.sw-border-c { border-color: var(--sw-border); }
+.sw-accent-bg { background: var(--sw-accent); }
+.sw-accent-text { color: var(--sw-accent); }
+.sw-accent-soft { background: color-mix(in srgb, var(--sw-accent) 14%, transparent); }
+
+.sw-surface-0 { background: var(--sw-surface-0); }
+.sw-surface-3 { background: var(--sw-surface-3); }
+
+/* Floating chrome over the canvas: frosted, elevated, theme-aware.
+   saturate обязателен: без него стекло сереет и выглядит дёшево. */
+.sw-glass {
+  background: var(--sw-elevated);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  border: 1px solid color-mix(in srgb, var(--sw-border) 85%, transparent);
+  box-shadow: var(--sw-elev-2);
+  transition: border-color 0.2s var(--sw-ease), box-shadow 0.2s var(--sw-ease),
+    background-color 0.2s var(--sw-ease);
+}
+.sw-glass:hover { border-color: var(--sw-border-strong); }
+
+.sw-panel {
+  background: var(--sw-surface);
+  box-shadow: var(--sw-shadow-lg);
+}
+
+/* Hover tint that works on both themes (the old code hardcoded white/5). */
+.sw-hover:hover { background: var(--sw-hover); }
+
+/* While the sidebar handle is being dragged: no text selection, no flicker. */
+.sw-resizing, .sw-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+.sw-btn {
+  transition: transform 0.16s var(--sw-ease), background-color 0.16s var(--sw-ease),
+    border-color 0.16s var(--sw-ease), opacity 0.16s var(--sw-ease);
+}
+.sw-btn:hover { background: var(--sw-hover); }
+/* Нажатие без волн и подсветок: короткий уход внутрь и всё. */
+.sw-btn:active { transform: scale(0.97); transition-duration: 0.08s; }
+
+/* ------------------------------------------------------------------
+   Типографика: явная лестница вместо размеров, расставленных по месту.
+   Отрицательный трекинг растёт с размером — ниже 13px его нет.
+   ------------------------------------------------------------------ */
+.sw-t-panel  { font-size: 16px; line-height: 22px; font-weight: 600; letter-spacing: -0.014em; }
+.sw-t-card   { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.011em; }
+.sw-t-body   { font-size: 12.5px; line-height: 18px; font-weight: 400; }
+.sw-t-value  { font-size: 12px; line-height: 16px; font-weight: 500; }
+.sw-t-meta   { font-size: 11px; line-height: 14px; font-weight: 500; }
+.sw-t-num    { font-size: 11px; line-height: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* Метка секции. Разделяет не линией, а регистром, размером и трекингом. */
+.sw-section-label {
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--sw-text-dim) 75%, transparent);
+}
+
+/* Один язык бейджей: одна форма, три тона. Тон несёт смысл, форма — нет. */
+.sw-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sw-badge-accent {
+  background: color-mix(in srgb, var(--node-tone, var(--sw-accent)) 22%, transparent);
+  color: color-mix(in srgb, var(--node-tone, var(--sw-accent)) 72%, var(--sw-text));
+}
+.sw-badge-mute { background: var(--sw-surface-2); color: var(--sw-text-dim); }
+.sw-badge-quiet { background: transparent; color: var(--sw-text-dim); opacity: 0.8; }
+
+/* Подписи интерфейса не выделяются мышью: случайное выделение подписи
+   кнопки при драге — верный признак непрофессионального UI. */
+button, label, .sw-section-label, kbd, .sw-badge, .sw-nolabel-select {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Keyboard focus is visible; mouse focus stays quiet. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--sw-ring);
+  border-radius: 8px;
+}
+
+kbd {
+  font-family: 'JetBrains Mono Variable', monospace;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--sw-border);
+  background: var(--sw-surface-2);
+  color: var(--sw-text-dim);
+  white-space: nowrap;
+}
+
+::selection {
+  background: var(--sw-accent);
+  color: #fff;
+}
+
+/* Scrollbar. Столбик, видимый всегда, — это шум: полоса проявляется, когда
+   в контейнере есть курсор или когда его только что прокрутили (.sw-scrolling
+   ставит обработчик прокрутки на 900 мс). */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.25s var(--sw-ease);
+}
+:hover::-webkit-scrollbar-thumb,
+.sw-scrolling::-webkit-scrollbar-thumb { background: var(--sw-border-strong); background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--sw-text-dim); background-clip: content-box; }
+* { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+*:hover, .sw-scrolling { scrollbar-color: var(--sw-border-strong) transparent; }
+
+/* Полоса прокрутки шириной 10px появляется и исчезает вместе с содержимым, и
+   каждый раз сдвигает всю колонку по горизонтали. В правых панелях содержимое
+   меняется буквально на каждое нажатие клавиши (текстовое поле растёт, всплывают
+   подсказки тегов) — отсюда и тряска. Резервируем место под полосу заранее:
+   она то есть, то нет, а ширина текста уже не меняется. */
+.sw-scroll-y {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  /* Инерция прокрутки в панели не должна докручивать холст под ней. */
+  overscroll-behavior: contain;
+}
+
+/* Полоска, которую листают вбок мышью: своя полоса прокрутки съела бы половину
+   её высоты. */
+.sw-no-scrollbar { scrollbar-width: none; }
+.sw-no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* React Flow theming.
+   v12 styles everything through its own --xy-* custom properties, so setting
+   those is what actually wins — plain class overrides lose to the library's
+   stylesheet whenever it is injected after ours. */
+.react-flow {
+  --xy-controls-button-background-color: var(--sw-surface);
+  --xy-controls-button-background-color-hover: var(--sw-surface-2);
+  --xy-controls-button-color: var(--sw-text);
+  --xy-controls-button-color-hover: var(--sw-accent);
+  --xy-controls-button-border-color: var(--sw-border);
+  --xy-controls-box-shadow: var(--sw-shadow-md);
+
+  --xy-minimap-background-color: var(--sw-surface-0);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--sw-bg) 62%, transparent);
+  --xy-minimap-node-background-color: var(--sw-border-strong);
+
+  --xy-edge-label-background-color: var(--sw-surface);
+  --xy-edge-label-color: var(--sw-text);
+  --xy-edge-stroke: var(--sw-edge);
+  --xy-edge-stroke-selected: var(--sw-accent);
+
+  --xy-handle-background-color: var(--sw-surface);
+  --xy-handle-border-color: var(--sw-accent);
+
+  --xy-connectionline-stroke: var(--sw-accent);
+  --xy-connectionline-stroke-width: 2;
+
+  --xy-selection-background-color: color-mix(in srgb, var(--sw-accent) 10%, transparent);
+  --xy-selection-border: 1px dashed var(--sw-accent);
+
+  --xy-attribution-background-color: transparent;
+  --xy-node-boxshadow-hover: none;
+}
+
+/* Слои холста: база с широким градиентом, виньетка и зерно. По отдельности
+   каждый почти незаметен — вместе они убирают ощущение чёрной дыры, на
+   которой карточки выглядят наклейками. */
+.sw-canvas-bg {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(72rem 48rem at 12% -8%,
+      color-mix(in srgb, var(--sw-accent) 6%, transparent), transparent 68%),
+    radial-gradient(64rem 44rem at 108% 106%,
+      color-mix(in srgb, var(--sw-accent) 4%, transparent), transparent 70%),
+    var(--sw-bg);
+}
+.sw-canvas-vignette {
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(120% 100% at 50% 45%, transparent 42%, rgba(0, 0, 0, 0.34) 100%);
+}
+.sw-light .sw-canvas-vignette {
+  background: radial-gradient(120% 100% at 50% 45%, transparent 42%, rgba(16, 16, 20, 0.06) 100%);
+}
+/* Зерно ловит бандинг градиента и убирает пластиковость. */
+.sw-canvas-grain {
+  position: absolute; inset: 0; pointer-events: none;
+  opacity: 0.022;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.sw-light .sw-canvas-grain { opacity: 0.015; }
+/* Холст React Flow перекрыл бы слои своим фоном. */
+.react-flow__renderer, .react-flow__pane { background: transparent; }
+
+/* React Flow overrides */
+.react-flow__attribution { display: none; }
+.react-flow__controls-button svg { fill: currentColor; }
+/* Точки связи. Никаких transform в ховере: React Flow центрирует их через
+   translate(), и любой свой transform сбивает точку с места ровно тогда, когда
+   в неё целишься. Растём тенью — визуально то же, но ничего не сдвигается.
+   В покое точек не видно вовсе: постоянные кружки — шум. */
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  background: var(--sw-surface);
+  border: 2px solid var(--node-tone, var(--sw-accent));
+  opacity: 0;
+  /* Левая точка объявлена в разметке раньше карточки, поэтому без явного
+     z-index карточка накрывает её собой — правая же оказывается сверху. */
+  z-index: 5;
+  transition: background-color 0.16s var(--sw-ease), box-shadow 0.16s var(--sw-ease),
+    opacity 0.16s var(--sw-ease), border-color 0.16s var(--sw-ease);
+}
+/* Невидимая площадка вокруг: попасть можно, не целясь в 13 пикселей. */
+.react-flow__handle::after {
+  content: "";
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+}
+/* Сдвигаем наружу: точка примыкает к карточке, а не утопает в ней. */
+.react-flow__handle-left { left: -3px; }
+.react-flow__handle-right { right: -3px; }
+.react-flow__node:hover .react-flow__handle,
+.react-flow__node.selected .react-flow__handle { opacity: 1; }
+.react-flow__handle:hover,
+.react-flow__handle.connectingfrom,
+.react-flow__handle.connectionindicator:hover {
+  opacity: 1;
+  background: var(--node-tone, var(--sw-accent));
+  box-shadow: 0 0 0 7px color-mix(in srgb, var(--node-tone, var(--sw-accent)) 26%, transparent);
+  cursor: crosshair;
+}
+/* Пока тянется связь, все допустимые цели видимы и слабо пульсируют. */
+.react-flow__node.sw-node-target .react-flow__handle { opacity: 1; animation: swPortPulse 1.4s var(--sw-ease) infinite; }
+.react-flow__handle.connectingto {
+  opacity: 1;
+  background: #22c55e;
+  border-color: #22c55e;
+  box-shadow: 0 0 0 7px rgba(34, 197, 94, 0.25);
+}
+@keyframes swPortPulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--sw-accent) 30%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--sw-accent) 22%, transparent); }
+}
+
+/* Связь — главный носитель смысла в графовом редакторе, поэтому у неё свой
+   цвет, а не цвет рамки инпута. Цвет типа связи проявляется только под
+   курсором и в выделении: постоянно разноцветные линии превращают граф в
+   спагетти (главная ошибка редакторов вроде Node-RED). */
+.react-flow__edge-path {
+  stroke: var(--sw-edge);
+  stroke-width: var(--sw-edge-w);
+  transition: stroke 0.16s var(--sw-ease), stroke-width 0.16s var(--sw-ease),
+    opacity 0.2s var(--sw-ease);
+}
+/* Попасть мышью по двухпиксельной линии невозможно — под ней широкая
+   невидимая подложка. */
+.react-flow__edge-interaction { stroke-width: 18; }
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--rel-color, var(--sw-edge-hover));
+  stroke-width: var(--sw-edge-w-hover);
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--rel-color, var(--sw-accent));
+  stroke-width: var(--sw-edge-w-selected);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--rel-color, var(--sw-accent)) 50%, transparent));
+}
+/* Только что созданная связь прочерчивается от источника к цели. */
+.react-flow__edge.sw-edge-new .react-flow__edge-path {
+  stroke-dasharray: 1200;
+  animation: swEdgeDraw 0.26s var(--sw-ease-out) backwards;
+}
+@keyframes swEdgeDraw {
+  from { stroke-dashoffset: 1200; }
+  to { stroke-dashoffset: 0; }
+}
+/* Линия, которую тянут: бегущий пунктир — тот самый отклик из Blueprints. */
+.react-flow__connectionline .react-flow__connection-path,
+.react-flow__connection-path {
+  stroke: var(--sw-accent);
+  stroke-width: 2;
+  stroke-dasharray: 4 6;
+  animation: swDashRun 0.7s linear infinite;
+}
+@keyframes swDashRun {
+  to { stroke-dashoffset: -20; }
+}
+.react-flow__edge-text { fill: var(--sw-text-dim); font-size: 11px; }
+.react-flow__edge-textbg { fill: var(--sw-surface); }
+.react-flow__minimap {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--sw-elev-2);
+  border: 1px solid color-mix(in srgb, var(--sw-border) 85%, transparent);
+}
+
+/* Контролы зума — горизонтальная пилюля с процентом вместо столбика кнопок. */
+.sw-zoom {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 34px;
+  padding: 0 4px;
+  border-radius: 10px;
+}
+.sw-zoom button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  min-width: 26px;
+  padding: 0 6px;
+  border-radius: 7px;
+  color: var(--sw-text-dim);
+  transition: background-color 0.16s var(--sw-ease), color 0.16s var(--sw-ease),
+    transform 0.08s var(--sw-ease);
+}
+.sw-zoom button:hover { background: var(--sw-hover); color: var(--sw-text); }
+.sw-zoom button:active { transform: scale(0.94); }
+.sw-zoom .sw-zoom-value { font-variant-numeric: tabular-nums; font-size: 11px; font-weight: 500; }
+.sw-zoom .sw-zoom-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 2px;
+  background: color-mix(in srgb, var(--sw-border) 85%, transparent);
+}
+
+/* Тулбар: группа — один контейнер, кнопки внутри без своих рамок и теней. */
+.sw-toolgroup {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 3px;
+  border-radius: 10px;
+}
+.sw-toolbtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--sw-text-dim);
+  transition: background-color 0.16s var(--sw-ease), color 0.16s var(--sw-ease),
+    transform 0.08s var(--sw-ease);
+}
+.sw-toolbtn:hover { background: var(--sw-hover); color: var(--sw-text); }
+.sw-toolbtn:active { transform: scale(0.97); }
+.sw-toolbtn[data-active="true"] { background: var(--sw-hover); color: var(--sw-text); }
+/* Единственная кнопка с заливкой в тулбаре — та, что выводит наружу. */
+.sw-toolbtn-primary {
+  background: color-mix(in srgb, var(--sw-accent) 14%, transparent);
+  color: color-mix(in srgb, var(--sw-accent) 70%, var(--sw-text));
+}
+.sw-toolbtn-primary:hover { background: color-mix(in srgb, var(--sw-accent) 22%, transparent); }
+.sw-tooldiv {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: color-mix(in srgb, var(--sw-border) 85%, transparent);
+}
+/* Иконки со стрелками оптически висят ниже центра. */
+.sw-toolbtn svg, .sw-zoom svg { margin-top: -1px; }
+.react-flow__node { transition: opacity 0.2s var(--sw-ease), filter 0.2s var(--sw-ease); }
+/* Nodes filtered out by search stay in place but recede. */
+.sw-node-dim { opacity: 0.18; filter: saturate(0.4); }
+/* Фокус на соседях: остальной граф уходит, но не исчезает. */
+.sw-node-faded { opacity: 0.4; filter: saturate(0.6); }
+.react-flow__edge.sw-edge-faded { opacity: 0.28; }
+.sw-node-hit { animation: swPulse 1.4s var(--sw-ease) infinite; }
+/* Валидная цель при протягивании связи: ярче рамка, чуть насыщеннее. */
+.sw-node-target .sw-node-card { border-color: var(--node-tone, var(--sw-accent)); filter: saturate(1.05); }
+.sw-node-muted { opacity: 0.55; }
+
+/* ---------------- карточка узла ----------------
+   --node-color приходит из данных узла. Тон, которым карточка пользуется,
+   на светлой теме притушен: цвет с L≈0.62 на белом не проходит по контрасту. */
+.sw-node, .sw-typed { --node-tone: var(--node-color, var(--sw-accent)); }
+.sw-light .sw-node, .sw-light .sw-typed {
+  --node-tone: color-mix(in oklab, var(--node-color, var(--sw-accent)), #000 16%);
+}
+
+.sw-node-card {
+  position: relative;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--sw-border) 90%, transparent);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--sw-surface) 98%, white 2%), var(--sw-surface));
+  box-shadow: var(--sw-elev-2);
+  overflow: hidden;
+  transition: box-shadow 0.16s var(--sw-ease), border-color 0.16s var(--sw-ease),
+    filter 0.16s var(--sw-ease);
+}
+/* Карточка по ховеру не двигается: подъём даёт тень и хайлайт, а сдвиг лишь
+   отрывает конец связи от края (хэндлы живут на обёртке). */
+.sw-node-card:hover { border-color: var(--sw-border-strong); box-shadow: var(--sw-elev-3); }
+.sw-node-card.is-selected {
+  border-color: var(--node-tone, var(--sw-accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-tone, var(--sw-accent)) 22%, transparent),
+    var(--sw-elev-3);
+  animation: swBreathe 2.4s ease-in-out infinite;
+}
+@keyframes swBreathe {
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-tone, var(--sw-accent)) 20%, transparent), var(--sw-elev-3); }
+  50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-tone, var(--sw-accent)) 28%, transparent), var(--sw-elev-3); }
+}
+/* Шапка — насыщенная плашка, а не блёклый градиент: она опознаётся с
+   расстояния, когда текст уже нечитаем. Рельс сверху доживает до 4 пикселей. */
+.sw-node-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 40px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--node-tone) 30%, var(--sw-surface)),
+    color-mix(in srgb, var(--node-tone) 16%, var(--sw-surface)));
+  border-bottom: 1px solid color-mix(in srgb, var(--node-tone) 34%, transparent);
+  box-shadow: inset 0 3px 0 0 var(--node-tone);
+  transition: box-shadow 0.16s var(--sw-ease);
+}
+.sw-node-card:hover .sw-node-head {
+  box-shadow: inset 0 3px 0 0 color-mix(in srgb, var(--node-tone) 88%, white);
+}
+/* Края букв на цветном фоне перестают «дрожать». */
+.sw-node-head-title { text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25); }
+.sw-light .sw-node-head-title { text-shadow: none; }
+.sw-node-badge-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--node-tone);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+/* Пока картинка грузится — не белая вспышка, а тихая поверхность. */
+.sw-node-img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  object-position: 50% 30%;   /* лица живут в верхней трети кадра */
+  background: var(--sw-surface-0);
+}
+.sw-node-img-wrap { position: relative; }
+/* Стык картинки с телом карточки не должен быть резким. */
+.sw-node-img-wrap::after {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: linear-gradient(transparent 60%, rgba(0, 0, 0, 0.35));
+}
+/* Поля строками «ключ — значение»: значения выровнены в колонку. */
+.sw-node-fields { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+.sw-node-field-key { font-size: 11px; line-height: 14px; font-weight: 500; color: var(--sw-text-dim); }
+.sw-node-field-val {
+  font-size: 12px; line-height: 14px; font-weight: 500; color: var(--sw-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Описание режется по строкам, а не по символам: ряд карточек выравнивается. */
+.sw-node-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--sw-text-dim);
+}
+.sw-node-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--sw-text-dim);
+  background: color-mix(in srgb, var(--node-tone) 12%, transparent);
+}
+.sw-node-tag::before {
+  content: "";
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--node-tone);
+}
+/* «Без названия» отличается от настоящего имени «Без названия». */
+.sw-untitled { font-style: italic; opacity: 0.85; }
+/* Содержимое узлов выделять можно — это текст, а не подпись кнопки. */
+.sw-node-card { user-select: text; }
+/* Внешняя обёртка узла гаснет только прозрачностью. Любой transform на ней
+   искажает getBoundingClientRect точек связи, а React Flow снимает их размеры
+   ровно один раз при появлении узла — и связь потом рисуется мимо точки.
+   Поэтому масштаб при появлении живёт на внутренней карточке. */
+.sw-node-in { animation: swFadeIn 0.32s var(--sw-ease) backwards; }
+.sw-node-card-in { animation: swNodeIn 0.32s var(--sw-ease) backwards; }
+/* На большом графе вход не анимируется вовсе: staggered появление двухсот
+   карточек — мучительная секунда на каждом открытии проекта. */
+.sw-no-node-anim .sw-node-in, .sw-no-node-anim .sw-node-card-in { animation: none; }
+/* Waiting for the second node while linking from the context menu. */
+.sw-node-linkable { cursor: crosshair; }
+.sw-node-linking { animation: swPulse 1.1s var(--sw-ease) infinite; }
+
+@keyframes swFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes swNodeIn {
+  from { opacity: 0; transform: scale(0.94) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Узел под перетаскиванием ощущается физически поднятым. */
+.react-flow__node.dragging .sw-node-card {
+  transform: scale(1.02);
+  box-shadow: var(--sw-elev-4);
+  transition: transform 0.12s var(--sw-ease-out), box-shadow 0.12s var(--sw-ease-out);
+}
+.react-flow__node.dragging { cursor: grabbing; }
+
+/* ---------------- сайдбар ----------------
+   Ни одной горизонтальной линии внутри: секции разделяет воздух и метка.
+   Единственная граница — правый край панели, и та ослаблена. */
+.sw-sidebar { border-right: 1px solid color-mix(in srgb, var(--sw-border) 60%, transparent); }
+
+.sw-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 7px;
+  text-align: left;
+  transition: background-color 0.16s var(--sw-ease), box-shadow 0.16s var(--sw-ease);
+}
+.sw-list-item:hover { background: var(--sw-hover); }
+/* Активный — рельс в цвет типа слева, тенью: border сдвинул бы содержимое. */
+.sw-list-item[data-active="true"] {
+  background: var(--sw-surface-2);
+  box-shadow: inset 2px 0 0 var(--node-tone, var(--sw-accent));
+}
+.sw-list-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--node-tone); }
+
+/* Поле поиска: рамка появляется только на фокусе, и появляется тенью. */
+.sw-search {
+  height: 34px;
+  border-radius: 9px;
+  background: var(--sw-surface-2);
+  border: none;
+  color: var(--sw-text);
+  font-size: 13px;
+  width: 100%;
+  padding: 0 62px 0 30px;
+  outline: none;
+  transition: box-shadow 0.16s var(--sw-ease);
+}
+.sw-search::placeholder { color: var(--sw-text-dim); }
+.sw-search:focus {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sw-accent) 45%, transparent), var(--sw-ring);
+}
+
+/* Резайзер: невидим, проявляется с задержкой — иначе мигает при каждом
+   проносе курсора к холсту. */
+.sw-resizer {
+  background: transparent;
+  transition: background-color 0.16s var(--sw-ease) 0s;
+}
+.sw-resizer:hover {
+  background: color-mix(in srgb, var(--sw-accent) 70%, transparent);
+  transition-delay: 0.3s;
+}
+
+/* ---------------- обновление приложения ----------------
+   Кнопка тиха, пока обновлять нечего, и загорается зелёным, когда в
+   репозитории появился релиз новее. Зелёный — заливкой, а не только текстом:
+   иначе на глаз это то же самое, что и соседние кнопки. */
+.sw-update-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--sw-border) 85%, transparent);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--sw-text-dim);
+  transition: background-color 0.16s var(--sw-ease), color 0.16s var(--sw-ease),
+    border-color 0.16s var(--sw-ease), box-shadow 0.16s var(--sw-ease),
+    transform 0.08s var(--sw-ease);
+}
+.sw-update-btn:hover { background: var(--sw-hover); color: var(--sw-text); }
+.sw-update-btn:active { transform: scale(0.97); }
+.sw-update-btn.is-new {
+  position: relative;
+  background: color-mix(in srgb, var(--sw-ok) 16%, transparent);
+  border-color: color-mix(in srgb, var(--sw-ok) 45%, transparent);
+  color: color-mix(in srgb, var(--sw-ok) 65%, var(--sw-text));
+  animation: swUpdateBreathe 2.4s ease-in-out infinite;
+}
+.sw-update-btn.is-new:hover { background: color-mix(in srgb, var(--sw-ok) 24%, transparent); }
+@keyframes swUpdateBreathe {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--sw-ok) 26%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--sw-ok) 18%, transparent); }
+}
+.sw-update-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sw-ok);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--sw-ok) 70%, transparent);
+}
+.sw-update-hero {
+  background: color-mix(in srgb, var(--sw-ok) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sw-ok) 30%, transparent);
+}
+
+/* Полоса загрузки: тонкая, без подписи — проценты и так видно по длине. */
+.sw-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--sw-surface-2);
+  overflow: hidden;
+}
+.sw-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--sw-ok);
+  transition: width 0.2s linear;
+}
+
+/* Микро-тост у курсора: «Скопировано» и подобное. */
+.sw-microtoast {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--sw-surface-3);
+  color: var(--sw-text);
+  box-shadow: var(--sw-elev-2);
+  animation: swMicro 0.9s var(--sw-ease) forwards;
+}
+@keyframes swMicro {
+  0% { opacity: 0; transform: translate(-50%, 4px); }
+  15%, 70% { opacity: 1; transform: translate(-50%, -6px); }
+  100% { opacity: 0; transform: translate(-50%, -14px); }
+}
+
+/* Название прямо на карточке: правится по двойному клику. */
+.sw-node-title-input {
+  width: 100%;
+  min-width: 0;
+  background: var(--sw-bg);
+  color: var(--sw-text);
+  border: 1px solid var(--sw-accent);
+  border-radius: 6px;
+  padding: 1px 6px;
+  font: inherit;
+  font-weight: 600;
+  outline: none;
+}
+
+/* Описание на карточке: markdown, обрезанный ровно по трём строкам —
+   ограничение по строкам, а не по символам, выравнивает ряд карточек. */
+.sw-node-md {
+  max-height: 54px;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
+}
+
+/* Ползунок, который переезжает к активному полю в редакторе узла. */
+.sw-field-rail {
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--sw-accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--sw-accent) 55%, transparent);
+}
+
+/* Подсветка только что созданного типа узла в настройках. */
+.sw-flash { animation: swFlash 1.6s var(--sw-ease); }
+@keyframes swFlash {
+  0%, 100% { box-shadow: none; border-color: var(--sw-border); }
+  15%, 60% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--sw-accent) 30%, transparent);
+    border-color: var(--sw-accent);
+  }
+}
+
+@keyframes swPulse {
+  0%, 100% { filter: drop-shadow(0 0 0 color-mix(in srgb, var(--sw-accent) 60%, transparent)); }
+  50% { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--sw-accent) 60%, transparent)); }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fadeUp 0.4s var(--sw-ease) forwards; }
+
+@keyframes swPop {
+  from { opacity: 0; transform: scale(0.97) translateY(-6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-pop { animation: swPop 0.16s var(--sw-ease) forwards; }
+
+@keyframes swMenuIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+.sw-menu { animation: swMenuIn 0.13s var(--sw-ease) forwards; transform-origin: var(--sw-origin, top left); }
+
+@keyframes swRise {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+.sw-rise { animation: swRise 0.22s var(--sw-ease) forwards; }
+
+@keyframes swSlideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.sw-slide-in { animation: swSlideIn 0.28s var(--sw-ease) backwards; }
+
+@keyframes swShimmer {
+  from { background-position: -400px 0; }
+  to { background-position: 400px 0; }
+}
+.sw-skeleton {
+  background: linear-gradient(90deg, var(--sw-surface) 25%, var(--sw-surface-2) 50%, var(--sw-surface) 75%);
+  background-size: 800px 100%;
+  animation: swShimmer 1.4s linear infinite;
+  border-radius: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Markdown rendering (react-markdown) */
+.sw-md > *:first-child { margin-top: 0; }
+.sw-md > *:last-child { margin-bottom: 0; }
+.sw-md p { margin: 0 0 0.6em; }
+.sw-md h1, .sw-md h2, .sw-md h3, .sw-md h4, .sw-md h5, .sw-md h6 {
+  font-family: 'Playfair Display Variable', serif; font-weight: 600; line-height: 1.2; margin: 0.8em 0 0.4em;
+}
+.sw-md h1 { font-size: 1.4em; }
+.sw-md h2 { font-size: 1.2em; }
+.sw-md h3 { font-size: 1.05em; }
+/* Мелкие уровни серифом уже не выигрывают: делаем их подзаголовками-метками. */
+.sw-md h4 { font-size: 0.98em; font-family: var(--sw-font); }
+.sw-md h5 { font-size: 0.92em; font-family: var(--sw-font); color: var(--sw-text-dim); }
+.sw-md h6 {
+  font-size: 0.8em; font-family: var(--sw-font); color: var(--sw-text-dim);
+  text-transform: uppercase; letter-spacing: 0.14em;
+}
+.sw-md del { opacity: 0.65; }
+.sw-md mark { background: color-mix(in srgb, var(--sw-accent) 30%, transparent); color: inherit; border-radius: 3px; padding: 0 0.15em; }
+/* Список задач: точка списка рядом с галочкой выглядит опечаткой. */
+.sw-md li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.1em; }
+.sw-md ul, .sw-md ol { margin: 0 0 0.6em; padding-left: 1.3em; }
+.sw-md ul { list-style: disc; }
+.sw-md ol { list-style: decimal; }
+.sw-md li { margin: 0.15em 0; }
+.sw-md blockquote { border-left: 2px solid var(--sw-accent); padding-left: 0.8em; margin: 0.6em 0; color: var(--sw-text-dim); }
+.sw-md code { font-family: 'JetBrains Mono Variable', monospace; font-size: 0.85em; background: var(--sw-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+.sw-md pre { background: var(--sw-bg); padding: 0.7em; border-radius: 6px; overflow-x: auto; margin: 0 0 0.6em; }
+.sw-md pre code { background: none; padding: 0; }
+.sw-md a { word-break: break-word; }
+.sw-md strong { font-weight: 700; }
+.sw-md em { font-style: italic; }
+.sw-md hr { border: none; border-top: 1px solid var(--sw-border); margin: 0.8em 0; }
+.sw-md table { border-collapse: collapse; margin: 0 0 0.6em; font-size: 0.9em; }
+.sw-md th, .sw-md td { border: 1px solid var(--sw-border); padding: 0.3em 0.6em; text-align: left; }
+.sw-md img { max-width: 100%; border-radius: 8px; }
+.sw-md input[type="checkbox"] { margin-right: 0.4em; accent-color: var(--sw-accent); }
+.sw-md li > p { margin: 0; }
+
+/* Тот же markdown, но ужатый до размеров карточки на холсте: заголовки не
+   раздувают строку, отступы вдвое меньше, картинки не тянут карточку вниз. */
+.sw-md-compact { color: var(--sw-text-dim); }
+.sw-md-compact p, .sw-md-compact ul, .sw-md-compact ol, .sw-md-compact pre { margin: 0 0 0.35em; }
+.sw-md-compact h1, .sw-md-compact h2, .sw-md-compact h3 {
+  margin: 0.2em 0 0.2em;
+  font-family: var(--sw-font);
+  font-size: 1.02em;
+  color: var(--sw-text);
+}
+.sw-md-compact ul, .sw-md-compact ol { padding-left: 1.05em; }
+.sw-md-compact li { margin: 0; }
+.sw-md-compact blockquote { margin: 0.25em 0; padding-left: 0.6em; }
+.sw-md-compact pre { padding: 0.35em 0.5em; font-size: 0.95em; }
+.sw-md-compact hr { margin: 0.4em 0; }
+.sw-md-compact img { display: none; }
+.sw-md-compact table { font-size: 0.95em; }
+.sw-md-compact th, .sw-md-compact td { padding: 0.1em 0.35em; }
+
+/* Просмотр описания в правой панели — читаемая колонка, а не сплошняк. */
+.sw-md-doc { font-size: 13px; line-height: 1.68; }
+.sw-md-doc p { margin: 0 0 0.75em; }
+
+/* Живой редактор описания: текст всё время набран, правится только тот блок,
+   в котором стоит курсор. Отступы у блока и у поля правки совпадают до
+   пикселя — иначе на каждый клик документ дёргался бы. */
+.sw-mde { display: flex; flex-direction: column; }
+.sw-mde-block,
+.sw-mde-input {
+  padding: 0.15em 0.4em;
+  margin: 0 -0.4em;
+  border-radius: 6px;
+  border-left: 2px solid transparent;
+}
+.sw-mde-block { cursor: text; }
+.sw-mde-block:hover { background: color-mix(in srgb, var(--sw-text) 4%, transparent); }
+.sw-mde-block .sw-md > *:last-child { margin-bottom: 0; }
+/* Пустой абзац между блоками — место, куда можно ткнуть и начать писать. */
+.sw-mde-empty { min-height: 1.1em; }
+.sw-mde-input {
+  border-left-color: var(--sw-accent);
+  background: color-mix(in srgb, var(--sw-accent) 7%, transparent);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--sw-text);
+}
+.sw-mde-input::placeholder { color: var(--sw-text-dim); }
+/* Хвост под текстом: клик по пустоте добавляет абзац, как в блокноте. */
+.sw-mde-tail { flex: 1; min-height: 2.5rem; cursor: text; }
+
+/* На весь экран текст крупнее: там его читают, а не проглядывают краем глаза. */
+.sw-mde-lg .sw-md-doc { font-size: 15px; line-height: 1.8; }
+.sw-mde-lg .sw-mde-input { font-size: 14px; line-height: 1.8; }
+.sw-mde-lg .sw-mde-block, .sw-mde-lg .sw-mde-input { padding: 0.2em 0.5em; margin: 0 -0.5em; }

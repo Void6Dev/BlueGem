@@ -1,165 +1,88 @@
 # BlueGem
 
-Визуальный конструктор миров: персонажи, фракции, локации и события живут узлами
-на холсте, а связи между ними — рёбрами графа. Настольное приложение для Windows:
-работает целиком на вашем компьютере, без интернета и без облака.
+BlueGem is an offline visual worldbuilding tool for writers, game developers, and storytellers. Build complex worlds by connecting **characters, factions, locations, events, organizations, and ideas** on an infinite canvas.
 
-```
-electron/  оболочка: окно, меню, запуск встроенного сервера
-backend/   FastAPI + SQLite — внутри приложения, замораживается в exe
-fronend/   React 19 + React Flow + Tailwind — собирается в статику
-scripts/   сборка иконок, сервера и всего приложения
-build/     icon.png — исходник иконки, из него собираются все ico
-```
+Everything runs locally on your computer—no cloud, no accounts, no Internet connection required.
 
-## Установка
+## Features
 
-Возьмите готовый файл из папки `release/`:
+* Infinite visual graph editor
+* Multiple canvases per project
+* Rich node editor with Markdown support
+* Wiki-style links (`[[Node Name]]`)
+* Timeline generated from node dates
+* Powerful search and Command Palette
+* Automatic project saving
+* Import and export projects
+* Completely offline
+* SQLite-based local storage
 
-| Файл | Что это |
-| --- | --- |
-| `BlueGem-Setup-1.1.0.exe` | Установщик: ярлык на рабочем столе, пункт в меню «Пуск», связь с файлами `.bgproj` |
-| `BlueGem-1.1.0-portable.exe` | Портативная версия: запускается откуда угодно, данные держит рядом с собой |
+## Installation
 
-Дальше — двойной клик по ярлыку. Ни консоли, ни `npm start`, ни `python app.py`:
-сервер поднимается внутри приложения сам и гаснет вместе с окном.
+Download one of the files from the latest release.
 
-## Где лежат данные
+| File                     | Description                                                     |
+| ------------------------ | --------------------------------------------------------------- |
+| **BlueGem-Setup.exe**    | Standard installer with desktop shortcut and file associations. |
+| **BlueGem-Portable.exe** | Portable version that stores all data beside the executable.    |
 
-| Сборка | Папка |
-| --- | --- |
-| Установленная | `%APPDATA%\BlueGem` |
-| Портативная | `BlueGem-Data` рядом с exe |
+Launch the application—everything starts automatically.
 
-Там же `logs\main.log` — полный журнал запуска. Быстрый путь: меню
-**Файл → Папка с данными**.
+## Data
 
-Проекты, узлы и связи — в `bluegem.db` (SQLite). Размер и положение окна —
-в `window-state.json`. Ничего никуда не отправляется.
+BlueGem stores all projects locally on your computer.
 
-При первом запуске приложение само подхватывает базу от прежних версий, если
-найдёт её: `%APPDATA%\StoryWeave\storyweave.db` или `backend\storyweave.db`
-рядом с исходниками. Если база лежит где-то ещё — просто положите её в папку с
-данными под именем `bluegem.db` до первого запуска.
+* Installed version: `%APPDATA%\BlueGem`
+* Portable version: `BlueGem-Data` next to the executable
 
-## Как этим пользоваться
+Your data is never uploaded or shared.
 
-| Действие | Как |
-| --- | --- |
-| Палитра команд и переход к любому узлу | `Ctrl + K` |
-| Поиск по узлам | `Ctrl + F` |
-| Новый проект | `Ctrl + N` |
-| Открыть файл проекта | `Ctrl + O` или двойной клик по `.bgproj` |
-| Новый узел | `N` (заметка) или `1`…`9` по типам |
-| Узел в конкретной точке | двойной клик по пустому холсту |
-| Дублировать / сохранить | `Ctrl + D` / `Ctrl + S` |
-| Вернуть удалённое | `Ctrl + Z` |
-| Авто-раскладка / вписать в экран | `L` / `F` |
-| Все горячие клавиши | `?` |
+## Keyboard Shortcuts
 
-Узлы правятся в панели справа и **сохраняются автоматически**. В описании
-работает Markdown и `[[Название узла]]` — ссылка на другой узел; если такого
-узла ещё нет, ссылка предложит его создать.
+| Action          | Shortcut     |
+| --------------- | ------------ |
+| Command Palette | **Ctrl + K** |
+| Search          | **Ctrl + F** |
+| New Project     | **Ctrl + N** |
+| Open Project    | **Ctrl + O** |
+| New Note        | **N**        |
+| Save            | **Ctrl + S** |
+| Undo            | **Ctrl + Z** |
+| Auto Layout     | **L**        |
+| Fit to Screen   | **F**        |
+| Show Shortcuts  | **?**        |
 
-**Холсты** — параллельные слои одного проекта (например, «Основной» и «Карта
-интриг»). Узел принадлежит одному холсту, переключатель — сверху слева.
+## Projects
 
-**Таймлайн** собирает узлы с заполненным полем «Дата» в хронологию. Дата — любой
-текст: `1024`, `3-я эпоха`, `перед войной`.
+Projects are saved as **.bgproj** files.
 
-## Экспорт и импорт
+BlueGem can also import projects created with older versions (`.swproj` and `.json`).
 
-- **`.bgproj`** — полный снимок проекта. Открывается двойным кликом из
-  проводника или кнопкой «Импорт». Хороший бэкап перед крупными правками.
-  Внутри обычный JSON. Файлы `.swproj` и `.json` от прежних версий открываются
-  так же — и двойным кликом, и через диалог.
-- **Markdown** — «библия мира»: узлы по типам, поля таблицами, связи списком.
+## Export
 
-Оба пункта — в меню редактора; приложение спросит, куда положить файл.
+Projects can be exported as:
 
-## Иконка
+* **.bgproj** — complete project backup
+* **Markdown** — structured world documentation
 
-Единственный исходник — `build/icon.png` (квадратный PNG, лучше 512×512).
-`npm run icon` собирает из него `build/icon.ico` и `build/file-icon.ico` со всеми
-размерами от 16 до 256 px и настоящей альфой, а заодно обновляет знак на
-заставке (`electron/app-icon.png`) и в шапке списка проектов
-(`fronend/src/assets/logo.png`). Замените PNG и запустите команду — обновится
-везде. Сам PNG скрипт не трогает.
+## Building from Source
 
-## Как это устроено
+Requirements:
 
-Приложение — оболочка Electron поверх того же кода, что был раньше:
-
-1. окно открывается сразу с заставкой;
-2. в фоне стартует встроенный сервер (замороженный FastAPI) — только на
-   `127.0.0.1`, на свободном порту, со случайным токеном доступа;
-3. этот же сервер отдаёт и собранный интерфейс, поэтому окно и API живут на
-   одном origin;
-4. при закрытии окна сервер останавливается; если оболочку сняли принудительно,
-   сервер замечает обрыв канала и уходит сам.
-
-Порт нигде не зашит: адрес и токен приходят в интерфейс через `preload`
-(`electron/preload.js` → `fronend/src/lib/desktop.js`). Если сервер не поднялся,
-вместо белого окна показывается страница с текстом ошибки, хвостом лога и
-кнопками «Перезапустить» и «Показать лог».
-
-Шрифты лежат внутри сборки (`fronend/src/fonts.js`), обращений в сеть нет ни
-одного — приложение полностью офлайновое.
-
-## Разработка
-
-Нужны Node 18+, Python 3.11+ и окружение `backend/.venv`:
+* Node.js 18+
+* Python 3.11+
 
 ```bash
-python -m venv backend\.venv
-backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 npm install
+npm run dev
 ```
 
-| Команда | Что делает |
-| --- | --- |
-| `npm run dev` | Окно приложения + горячая перезагрузка интерфейса (CRA на `:3000`) |
-| `npm run build` | Собирает иконки, интерфейс и замораживает сервер |
-| `npm run dist` | То же + установщик и портативный exe в `release/` |
-| `npm run icon` | Пересобирает иконки из `build/icon.png` |
+Create a release build:
 
-Отдельно интерфейс в браузере — как раньше: `cd fronend && npm start` плюс
-`backend\.venv\Scripts\python.exe -m uvicorn server:app --port 8000 --app-dir backend`.
-Адрес API для этого режима лежит в `fronend/.env.development`.
+```bash
+npm run dist
+```
 
-Классы `sw-*` и переменные `--sw-*` в стилях — внутренние токены оформления,
-к имени приложения отношения не имеют и намеренно оставлены как есть.
+## License
 
-`start.bat` сохранён в **CP866** и не вызывает `chcp`. Если редактор пересохранит
-его в UTF-8, cmd.exe начнёт разбирать файл со сбитым смещением и куски строк
-полетят в командную строку как команды (`'не' is not recognized…`). В VS Code
-кодировка файла показана в правом нижнем углу — там должно быть `CP866`
-(или `IBM866`/`DOS-866`).
-
-## API
-
-Встроенный сервер требует заголовок `X-BG-Token` (его знает только оболочка).
-При запуске вручную токен не задаётся, и API открыт как прежде.
-
-| Метод | Путь |
-| --- | --- |
-| `GET/POST` | `/api/projects` |
-| `GET/PUT/DELETE` | `/api/projects/{id}` |
-| `GET` | `/api/projects/{id}/graph` |
-| `GET` | `/api/projects/{id}/export` |
-| `POST` | `/api/projects/import`, `/api/projects/{id}/duplicate` |
-| `POST` | `/api/projects/{id}/nodes` |
-| `PUT` | `/api/projects/{id}/nodes/positions` (массовое обновление) |
-| `PUT/DELETE` | `/api/nodes/{id}` |
-| `POST` | `/api/projects/{id}/edges` |
-| `PUT/DELETE` | `/api/edges/{id}` |
-| `GET` | `/api/health` |
-
-## Заметки
-
-- `backend/server.mongo.bak.py` — старая версия на MongoDB, в работе не
-  участвует; переименование её не касалось.
-- `all-packages.txtpy` в корне — дамп глобального `pip freeze`, к проекту
-  отношения не имеет, можно удалить.
-- Установщик и exe не подписаны сертификатом, поэтому SmartScreen при первом
-  запуске покажет предупреждение — «Подробнее» → «Выполнить в любом случае».
+See the LICENSE file for licensing information.

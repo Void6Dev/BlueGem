@@ -2,7 +2,7 @@
 <html lang="ru">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'" />
     <title>BlueGem</title>
     <style>
       /* Заставка на те секунды, пока поднимается встроенный сервер.
@@ -46,6 +46,12 @@
     <img class="mark" src="app-icon.png" alt="" />
     <div class="title">BlueGem</div>
     <div class="bar"><i></i></div>
-    <div class="hint">Запускаю локальный сервер…</div>
+    <!-- Подпись подставляет main.js: заставка открывается раньше интерфейса,
+         и язык на этот момент знает только оболочка. -->
+    <div class="hint" id="hint">Starting the local server…</div>
+    <script>
+      const hint = new URLSearchParams(location.search).get("hint");
+      if (hint) document.getElementById("hint").textContent = hint;
+    </script>
   </body>
 </html>

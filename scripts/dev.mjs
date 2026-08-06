@@ -50,7 +50,7 @@ function waitForPort(port, timeoutMs = 180_000) {
 }
 
 console.log(`[dev] запускаю интерфейс на ${DEV_URL}`);
-const FRONTEND = join(ROOT, "fronend");
+const FRONTEND = join(ROOT, "frontend");
 // Зовём craco напрямую: `npm --prefix` спотыкается о пробел в пути к проекту.
 const cra = spawn(
   process.execPath,

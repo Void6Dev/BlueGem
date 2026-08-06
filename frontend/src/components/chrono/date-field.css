@@ -1,0 +1,261 @@
+/* Редактор дат и настройки календаря.
+
+   Плотная сетка мелких полей: дата — это не абзац текста, а несколько чисел,
+   и растягивать их на всю панель незачем. */
+
+.df-root { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.df-entry {
+  border: 1px solid var(--sw-border);
+  border-radius: 9px;
+  background: var(--sw-surface-2);
+  overflow: hidden;
+}
+.df-entry-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+}
+.df-entry-head:hover { background: var(--sw-hover); }
+.df-entry-key {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sw-text-dim);
+  white-space: nowrap;
+}
+.df-entry-value { font-size: 11px; color: var(--sw-accent); min-width: 0; }
+.df-entry-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.15rem 0.5rem 0.55rem;
+  border-top: 1px solid var(--sw-border);
+}
+
+.df-row { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+.df-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sw-text-dim);
+  white-space: nowrap;
+}
+.df-divider {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sw-text-dim);
+  padding-top: 0.15rem;
+  border-top: 1px dashed var(--sw-border);
+}
+.df-pm { font-size: 12px; color: var(--sw-text-dim); }
+
+.df-input,
+.df-select {
+  height: 1.75rem;
+  min-width: 0;
+  padding: 0 0.4rem;
+  font-size: 12px;
+  border: 1px solid var(--sw-border);
+  border-radius: 7px;
+  background: var(--sw-surface);
+  color: var(--sw-text);
+  outline: none;
+}
+.df-input:focus, .df-select:focus { border-color: var(--sw-accent); }
+.df-input:disabled { opacity: 0.45; }
+.df-num { width: 4.5rem; }
+.df-select { max-width: 11rem; }
+
+.df-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: 6px;
+  color: var(--sw-text-dim);
+}
+.df-icon:hover { background: var(--sw-hover); color: var(--sw-text); }
+
+.df-add,
+.df-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 7px;
+  border: 1px dashed var(--sw-border);
+  font-size: 11px;
+  color: var(--sw-text-dim);
+  align-self: flex-start;
+}
+.df-add:hover, .df-ghost:hover { color: var(--sw-accent); border-color: var(--sw-accent); }
+
+.df-value { display: flex; flex-direction: column; gap: 0.4rem; }
+
+/* Оговорки — сеткой, а не выпадающим списком: их шесть, и все важные.
+   Видеть сразу, что «между» и «до» существуют, полезнее, чем экономить место. */
+.df-kinds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.2rem; }
+.df-kind {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid var(--sw-border);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--sw-text-dim);
+  background: var(--sw-surface);
+  min-width: 0;
+}
+.df-kind:hover { border-color: var(--sw-border-strong); }
+.df-kind-on {
+  color: var(--sw-accent);
+  border-color: var(--sw-accent);
+  background: color-mix(in srgb, var(--sw-accent) 12%, transparent);
+}
+.df-kind-mark { font-weight: 700; font-family: var(--sw-mono, monospace); }
+.df-kind-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.df-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--sw-border);
+  border-radius: 7px;
+  font-size: 11px;
+  color: var(--sw-text-dim);
+}
+.df-toggle-on {
+  color: var(--sw-accent);
+  border-color: var(--sw-accent);
+  background: color-mix(in srgb, var(--sw-accent) 12%, transparent);
+}
+
+.df-rel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--sw-accent) 6%, transparent);
+}
+
+/* --- выбор узла --- */
+.df-picker { position: relative; flex: 1; min-width: 8rem; }
+.df-picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: 100%;
+  height: 1.75rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--sw-border);
+  border-radius: 7px;
+  background: var(--sw-surface);
+  font-size: 12px;
+  color: var(--sw-text);
+  text-align: left;
+}
+.df-picker-empty { color: var(--sw-text-dim); }
+.df-picker-pop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  border-radius: 9px;
+  border: 1px solid var(--sw-border);
+  background: var(--sw-elevated);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--sw-shadow-md);
+}
+.df-picker-list { max-height: 12rem; }
+.df-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.25rem 0.35rem;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: left;
+}
+.df-picker-item:hover { background: var(--sw-hover); }
+.df-picker-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.df-picker-none { padding: 0.4rem; font-size: 11px; color: var(--sw-text-dim); }
+
+/* --- настройки календаря --- */
+.cal-months { display: flex; flex-direction: column; gap: 0.25rem; }
+.cal-month {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem;
+  border-radius: 7px;
+  background: var(--sw-surface-2);
+}
+.cal-month-index {
+  width: 1.4rem;
+  text-align: center;
+  font-size: 10px;
+  color: var(--sw-text-dim);
+}
+.cal-preview {
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  border: 1px dashed var(--sw-border);
+  font-size: 12px;
+  color: var(--sw-accent);
+}
+.cal-note {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--sw-text-dim);
+}
+.cal-presets { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.cal-preset {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--sw-border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--sw-text-dim);
+}
+.cal-preset:hover { color: var(--sw-accent); border-color: var(--sw-accent); }
+
+/* --- эпохи --- */
+.era-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.45rem;
+  border: 1px solid var(--sw-border);
+  border-radius: 9px;
+  background: var(--sw-surface-2);
+}
+.era-swatch {
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 1px solid var(--sw-border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+.era-bar {
+  height: 3px;
+  border-radius: 2px;
+  margin-top: 0.15rem;
+}

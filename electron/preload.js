@@ -38,11 +38,31 @@ contextBridge.exposeInMainWorld("bluegem", {
   openLog: () => ipcRenderer.invoke("bg:open-log"),
   /** Перезапустить приложение целиком (кнопка на странице ошибки). */
   restart: () => ipcRenderer.invoke("bg:restart"),
+  /** Сообщить оболочке выбранный язык: меню и диалоги следуют за интерфейсом. */
+  setLanguage: (lang) => ipcRenderer.invoke("bg:set-language", lang),
 
   /** Проект, открытый через «Открыть…» или ассоциацию файлов. */
   onOpenProject: (handler) => subscribe("bg:open-project", handler),
   /** Команды из меню приложения: "new-project", "import-project". */
   onMenuCommand: (handler) => subscribe("bg:menu", handler),
+  /** Язык переключили в меню оболочки — интерфейсу нужно подхватить. */
+  onLanguage: (handler) => subscribe("bg:language", handler),
+
+  /**
+   * Обновления через релизы GitHub (см. electron/update.js).
+   * state()   — что уже известно, без запросов в сеть;
+   * check()   — проверить (force обходит суточный кэш);
+   * install() — скачать установщик этого тега и запустить его; тег любой,
+   *             поэтому откат на старую версию — тот же вызов.
+   */
+  update: {
+    state: () => ipcRenderer.invoke("bg:update-state"),
+    check: (options) => ipcRenderer.invoke("bg:update-check", options || {}),
+    install: (tag) => ipcRenderer.invoke("bg:update-install", tag),
+    onProgress: (handler) => subscribe("bg:update-progress", handler),
+  },
+  /** Открыть форму нового issue с подставленной версией и системой. */
+  sendFeedback: (payload) => ipcRenderer.invoke("bg:feedback", payload || {}),
 });
 
 /** Подписка, отдающая наружу только полезную нагрузку (без объекта события). */

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
-    <title>BlueGem — не запустилось</title>
+    <title>BlueGem</title>
     <style>
       :root { color-scheme: dark; }
       * { box-sizing: border-box; }
@@ -61,38 +61,71 @@
   </head>
   <body>
     <div class="card">
-      <span class="badge">Ошибка запуска</span>
-      <h1 id="message">Не удалось запустить BlueGem</h1>
-      <p class="lead">
-        Данные проектов не пострадали — они лежат в локальной базе и никуда не делись.
-        Ниже то, что сообщила программа.
-      </p>
+      <span class="badge" id="badge"></span>
+      <h1 id="message"></h1>
+      <p class="lead" id="lead"></p>
       <pre id="details">—</pre>
       <p class="path" id="logline"></p>
       <div class="row">
-        <button class="primary" id="retry">Перезапустить</button>
-        <button id="openLog">Показать лог</button>
-        <button id="copy">Скопировать текст ошибки</button>
+        <button class="primary" id="retry"></button>
+        <button id="openLog"></button>
+        <button id="copy"></button>
       </div>
     </div>
 
     <script>
-      // Подробности приходят в query-строке от основного процесса.
+      // Своего словаря у страницы нет: подписи и подробности приходят
+      // в query-строке от основного процесса, который знает язык.
+      const TEXTS = {
+        en: {
+          badge: "Startup error",
+          title: "BlueGem could not start",
+          lead: "Your projects are unharmed — they live in the local database and are still there. "
+            + "Below is what the program reported.",
+          noDetails: "No further details.",
+          log: "Full log: ",
+          restart: "Restart",
+          showLog: "Show log",
+          copy: "Copy the error text",
+          copied: "Copied",
+        },
+        ru: {
+          badge: "Ошибка запуска",
+          title: "Не удалось запустить BlueGem",
+          lead: "Данные проектов не пострадали — они лежат в локальной базе и никуда не делись. "
+            + "Ниже то, что сообщила программа.",
+          noDetails: "Дополнительных сведений нет.",
+          log: "Полный лог: ",
+          restart: "Перезапустить",
+          showLog: "Показать лог",
+          copy: "Скопировать текст ошибки",
+          copied: "Скопировано",
+        },
+      };
+
       const params = new URLSearchParams(location.search);
-      const message = params.get("message") || "Неизвестная ошибка";
-      const details = params.get("details") || "Дополнительных сведений нет.";
+      const s = TEXTS[params.get("lang")] || TEXTS.en;
+      const message = params.get("message") || s.title;
+      const details = params.get("details") || s.noDetails;
       const logFile = params.get("log") || "";
 
+      document.title = `BlueGem — ${s.badge}`;
+      document.documentElement.lang = params.get("lang") || "en";
+      document.getElementById("badge").textContent = s.badge;
       document.getElementById("message").textContent = message;
+      document.getElementById("lead").textContent = s.lead;
       document.getElementById("details").textContent = details;
-      document.getElementById("logline").textContent = logFile ? `Полный лог: ${logFile}` : "";
+      document.getElementById("logline").textContent = logFile ? s.log + logFile : "";
+      document.getElementById("retry").textContent = s.restart;
+      document.getElementById("openLog").textContent = s.showLog;
+      document.getElementById("copy").textContent = s.copy;
 
       const bridge = window.bluegem || {};
       document.getElementById("retry").onclick = () => bridge.restart?.();
       document.getElementById("openLog").onclick = () => bridge.openLog?.();
       document.getElementById("copy").onclick = async (e) => {
         await navigator.clipboard.writeText(`${message}\n\n${details}`);
-        e.target.textContent = "Скопировано";
+        e.target.textContent = s.copied;
       };
       if (!logFile) document.getElementById("openLog").style.display = "none";
     </script>
