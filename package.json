@@ -1,7 +1,7 @@
 {
   "name": "bluegem",
   "productName": "BlueGem",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "BlueGem — визуальный конструктор миров: персонажи, фракции, локации и события на одном холсте",
   "author": "BlueGem",
