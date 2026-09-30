@@ -54,4 +54,13 @@ if (!existsSync(join(FRONTEND, "build", "index.html"))) {
 
 step("сервер", process.execPath, [join(ROOT, "scripts", "build-backend.mjs")]);
 
+// Адрес ретранслятора отзывов в репозитории не хранится (electron/feedback.js).
+// Без локального файла сборка выйдет рабочей, но отзыв из неё уйдёт только
+// запасным путём — через issue на GitHub. Говорим об этом сразу, а не после
+// выпуска.
+if (!existsSync(join(ROOT, "electron", "feedback.local.json"))) {
+  console.warn("\nВнимание: нет electron/feedback.local.json — отправка отзывов из сборки"
+    + " будет только через GitHub. Как его завести — в шапке scripts/feedback-relay.gs.");
+}
+
 console.log("\nГотово. Теперь можно упаковать: npx electron-builder --win nsis portable");

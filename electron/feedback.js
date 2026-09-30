@@ -12,14 +12,33 @@
  * Если адрес не задан или сеть недоступна, остаётся запасной путь — issue на
  * GitHub. Человек в любом случае не теряет написанный текст.
  */
+const fs = require("fs");
+const path = require("path");
 const { app, net } = require("electron");
 
 const log = require("./logger");
 
 // Адрес развёртывания веб-приложения Apps Script — как его получить, написано
-// в шапке scripts/feedback-relay.gs. Переменная окружения нужна, чтобы проверять
-// отправку на тестовом развёртывании, не пересобирая приложение.
-const RELAY_URL = process.env.BG_FEEDBACK_RELAY || "https://script.google.com/macros/s/AKfycbxeEORvX3bM6AKxNk98kvlUf6DG4D5GtSc5rZw3A12DpDwoBE76rB3J0K9Q-qrBbusD/exec";
+// в шапке scripts/feedback-relay.gs.
+//
+// В коде его нет: репозиторий открыт, а по адресу любой может слать письма на
+// ящик автора. Он живёт в electron/feedback.local.json — файл в .gitignore, но
+// electron-builder кладёт в сборку всё из electron/** по своим правилам, не по
+// .gitignore, так что в exe адрес попадает. Формат: { "relayUrl": "https://…" }.
+// Переменная окружения важнее файла — чтобы проверять отправку на тестовом
+// развёртывании, не пересобирая приложение.
+function readRelayUrl() {
+  if (process.env.BG_FEEDBACK_RELAY) return process.env.BG_FEEDBACK_RELAY;
+  try {
+    const raw = fs.readFileSync(path.join(__dirname, "feedback.local.json"), "utf8");
+    const url = JSON.parse(raw).relayUrl;
+    return typeof url === "string" ? url.trim() : "";
+  } catch {
+    // Файла нет — сборка без ретранслятора: отзыв уйдёт запасным путём (issue).
+    return "";
+  }
+}
+const RELAY_URL = readRelayUrl();
 
 const TIMEOUT_MS = 15000;
 const MAX_BODY = 5000;

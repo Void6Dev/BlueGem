@@ -14,7 +14,9 @@
  *      не сможет достучаться без входа в аккаунт Google.
  *   4. Google один раз спросит разрешение на отправку почты — выдать.
  *   5. Скопировать выданный URL вида https://script.google.com/macros/s/…/exec
- *      и вписать его в electron/feedback.js в константу RELAY_URL.
+ *      и положить его в electron/feedback.local.json: { "relayUrl": "<URL>" }.
+ *      Файл в .gitignore — в открытый репозиторий адрес не попадает, а в
+ *      сборку попадает (electron-builder берёт electron/** целиком).
  *
  * Проверить, что живо, можно прямо из консоли:
  *   curl -L -X POST -H "Content-Type: application/json" \
