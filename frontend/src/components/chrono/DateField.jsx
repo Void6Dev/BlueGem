@@ -183,7 +183,7 @@ export function DateValueEditor({ value, onChange, nodes, selfId, calendar, eras
 
       {date.kind === "unknown" ? (
         <div className="df-row">
-          <label className="df-label">{tr("chrono.era")}</label>
+          <label className="df-label">{tr("chrono.eraLabel")}</label>
           <EraSelect value={date.eraId} onChange={(eraId) => set({ eraId })} eras={eras} />
           <input
             className="df-input flex-1"
@@ -207,7 +207,7 @@ export function DateValueEditor({ value, onChange, nodes, selfId, calendar, eras
             </button>
             {!relative && (
               <>
-                <label className="df-label">{tr("chrono.era")}</label>
+                <label className="df-label">{tr("chrono.eraLabel")}</label>
                 <EraSelect value={date.eraId} onChange={(eraId) => set({ eraId })} eras={eras} />
               </>
             )}

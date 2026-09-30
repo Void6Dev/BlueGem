@@ -33,6 +33,8 @@ const GROUPS = [
       ["Ctrl + 1 … 9", "newTyped"],
       ["doubleClick", "doubleClickHint", true],
       ["Ctrl + D", "duplicate"],
+      ["Ctrl + C", "copy"],
+      ["Ctrl + V", "paste"],
       ["Ctrl + S", "saveNode"],
       ["Ctrl + Shift + E", "descFull"],
       ["Delete", "deleteSelection"],

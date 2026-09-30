@@ -101,11 +101,18 @@ export const updates = {
 };
 
 /**
- * Письмо автору. В приложении — форма нового issue с уже подставленной
- * версией; в браузере — та же форма, но без сведений о системе.
+ * Отправить отзыв письмом автору. Умеет это только оболочка: из браузера запрос
+ * не уйдёт — чужой домен закроет его политикой CORS. Поэтому в браузере сразу
+ * отдаём отказ, а интерфейс предлагает запасной путь.
  */
-export function sendFeedback({ title, body, kind }) {
-  if (isDesktop && bridge.sendFeedback) return bridge.sendFeedback({ title, body, kind });
+export function sendFeedback({ title, body, kind, email }) {
+  if (isDesktop && bridge.sendFeedback) return bridge.sendFeedback({ title, body, kind, email });
+  return Promise.resolve({ ok: false, error: "unsupported" });
+}
+
+/** Запасной путь: форма нового issue с уже подставленным текстом. */
+export function openFeedbackIssue({ title, body, kind }) {
+  if (isDesktop && bridge.feedbackUrl) return bridge.feedbackUrl({ title, body, kind });
   const params = new URLSearchParams({ title: title || "", body: body || "" });
   const url = `https://github.com/Void6Dev/BlueGem/issues/new?${params.toString()}`;
   window.open(url, "_blank", "noopener,noreferrer");

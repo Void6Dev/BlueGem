@@ -14,7 +14,8 @@
  * и файлы. Токен не требуется, но безымянный лимит API — 60 запросов в час
  * на адрес, поэтому список кэшируется на диск и живёт сутки.
  */
-const { app, net, shell } = require("electron");
+const { app, net } = require("electron");
+const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const path = require("node:path");
@@ -235,15 +236,14 @@ async function install(tag, onProgress) {
 
     log.info(`установка версии ${release.version} из ${file}`);
     if (isPortable()) {
-      // Портативную копию заменить на ходу нельзя — она сейчас запущена.
-      // Показываем скачанный файл: дальше человек решает сам.
-      shell.showItemInFolder(file);
+      await replacePortable(file);
+      setTimeout(() => app.quit(), 600);
       return { ok: true, portable: true, path: file };
     }
-    // Установщик просит прав администратора сам; закрываемся, чтобы он мог
-    // переписать файлы приложения.
-    const opened = await shell.openPath(file);
-    if (opened) throw new Error(opened);
+    // Тихий режим NSIS: окна мастера не показываются, а --force-run поднимает
+    // приложение обратно, когда файлы переписаны. Для человека обновление
+    // выглядит как перезапуск, а не как повторная установка.
+    spawn(file, ["/S", "--force-run"], { detached: true, stdio: "ignore" }).unref();
     setTimeout(() => app.quit(), 600);
     return { ok: true, path: file };
   } catch (e) {
@@ -253,6 +253,37 @@ async function install(tag, onProgress) {
   } finally {
     downloading = false;
   }
+}
+
+/**
+ * Подменить портативный exe скачанным.
+ *
+ * Себя на ходу файл переписать не может — он занят запущенным процессом.
+ * Поэтому работу делает отдельный cmd-скрипт: ждёт, пока приложение закроется,
+ * копирует новый файл поверх старого и запускает его. Скрипт удаляет себя сам.
+ *
+ * Настоящий путь портативной сборки — в PORTABLE_EXECUTABLE_FILE: process.execPath
+ * указывает на временную распаковку, перезаписывать её бессмысленно.
+ */
+async function replacePortable(file) {
+  const target = process.env.PORTABLE_EXECUTABLE_FILE;
+  if (!target) throw new Error("portable path unknown");
+
+  const script = path.join(path.dirname(file), "bluegem-replace.cmd");
+  // Ожидание циклом, а не фиксированной паузой: закрытие занимает по-разному,
+  // а копирование в занятый файл молча провалится.
+  await fsp.writeFile(script, [
+    "@echo off",
+    "chcp 65001 >nul",
+    ':wait',
+    'tasklist /fi "imagename eq BlueGem.exe" | find /i "BlueGem.exe" >nul',
+    'if not errorlevel 1 (timeout /t 1 /nobreak >nul & goto wait)',
+    `copy /y "${file}" "${target}" >nul`,
+    `start "" "${target}"`,
+    'del "%~f0"',
+  ].join("\r\n"), "utf8");
+
+  spawn("cmd.exe", ["/c", script], { detached: true, stdio: "ignore", windowsHide: true }).unref();
 }
 
 async function download(asset, file, onProgress) {

@@ -4,7 +4,6 @@ import "@/lib/quietResizeObserver";
 import "@/fonts";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // React Flow first — our own sheet must be able to override it.
 import "@xyflow/react/dist/style.css";
 import "@/index.css";
@@ -14,18 +13,8 @@ import { applyStoredAppearance } from "@/lib/settings";
 // Paint with the remembered theme/accent before React mounts — no white flash.
 applyStoredAppearance();
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 60_000,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
-
+// React Query здесь когда-то стоял провайдером — и ни одного запроса через
+// него не шло: данные ходят через lib/api. Провайдер тянул в сборку всю
+// библиотеку ради нуля вызовов.
 const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(
-  <QueryClientProvider client={queryClient}>
-    <App />
-  </QueryClientProvider>,
-);
+root.render(<App />);

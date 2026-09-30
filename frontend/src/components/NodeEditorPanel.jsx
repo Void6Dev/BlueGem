@@ -2,10 +2,11 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import {
-  X, Plus, Trash2, Save, Copy, ImagePlus, Check, Loader2,
-  ArrowRight, ArrowLeft, Link2, MousePointerClick, Maximize2, Minimize2,
+  X, Plus, Trash2, Copy, ImagePlus, Check, Loader2,
+  ArrowRight, ArrowLeft, Link2, ChevronDown, Maximize2, Minimize2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { Button } from "@/components/ui/button";
 import { NodeIcon } from "@/components/NodeIcon";
 import MarkdownEditor from "@/components/MarkdownEditor";
@@ -24,20 +25,39 @@ function FieldRail({ show }) {
 
 // Suggested characteristics per node type — one click instead of typing the key.
 // Подсказки переводятся: поле создаётся на языке, на котором человек работает.
-const fieldTemplates = (typeId) => {
-  const own = tList(`fieldTemplates.${typeId}`);
-  return own.length ? own : tList("fieldTemplates.default");
+// Заготовка проекта важнее словаря: её заводит шаблон под свой жанр, и её
+// правят. Словарь остаётся для проектов, созданных до переезда подсказок в
+// настройки — там подсказки по-прежнему переводятся вместе с интерфейсом.
+const fieldTemplates = (typeId, projectFields) => {
+  const own = projectFields?.[typeId];
+  if (own?.length) return own;
+  const dict = tList(`fieldTemplates.${typeId}`);
+  return dict.length ? dict : tList("fieldTemplates.default");
 };
 
 const AUTOSAVE_MS = 900;
 
+// Длинная сторона картинки после ужатия и потолок, ниже которого оригинал
+// можно не трогать (≈300 КБ в base64).
+//
+// Потолок был втрое выше, и всё, что в него влезало, ложилось в базу как есть.
+// Скриншот интерфейса в PNG — это как раз полмегабайта, а показывается он
+// полоской в четверть карточки: сотня таких узлов превращалась в полсотни
+// мегабайт, которые проект тащит целиком при каждом открытии.
+const IMAGE_MAX_SIDE = 1400;
+const IMAGE_MAX_CHARS = 300 * 1024;
+
 export default function NodeEditorPanel({
   node, nodeTypes, onClose, onSave, onDelete, onDuplicate, onLiveChange, focusField,
   allNodes = [], allTags = [], connections = [], onOpenNode, onCreateNode, canvases = [],
-  calendar, eras = [],
+  calendar, eras = [], fieldTemplates: projectFields, onChangeType, onLink, onUnlink,
 }) {
   const tr = useT();
   const [draft, setDraft] = useState(null);
+  const [seenType, setSeenType] = useState(null);
+  const [typeOpen, setTypeOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkQuery, setLinkQuery] = useState("");
   const [tagInput, setTagInput] = useState("");
   const [descFull, setDescFull] = useState(false); // описание на весь экран
   const [status, setStatus] = useState("idle"); // idle | dirty | saving | saved
@@ -74,6 +94,16 @@ export default function NodeEditorPanel({
     setConfirmDelete(false);
     setTagInput("");
     setActiveField(null);
+    setSeenType(node.typeId);
+    setTypeOpen(false);
+    setLinkOpen(false);
+    setLinkQuery("");
+  } else if (node && draft && node.typeId !== seenType) {
+    // Тип сменили мимо панели — правым кликом по узлу. Черновик об этом не
+    // знал, и первое же автосохранение после любой правки возвращало узлу
+    // прежний тип: saveNode шлёт typeId из черновика.
+    setSeenType(node.typeId);
+    setDraft((d) => ({ ...d, typeId: node.typeId }));
   }
 
   // Ушли с узла, не дописав правку, — дописываем её вдогонку.
@@ -93,12 +123,9 @@ export default function NodeEditorPanel({
     setActiveField(which);
     const frame = requestAnimationFrame(() => {
       if (which === "title") {
-        const el = titleRef.current;
-        if (!el) return;
-        // Крутим сам список панели, а не scrollIntoView: тот уводит вбок и всех
-        // предков, вплоть до корневого экрана.
-        scrollWithin(scrollRef.current, el);
-        el.focus({ preventScroll: true });
+        // Имя живёт в шапке панели, вне прокрутки, — доводить до него нечего.
+        // Прежний scrollWithin здесь теперь только сбрасывал содержимое наверх.
+        titleRef.current?.focus({ preventScroll: true });
         return;
       }
       const host = descRef.current?.element();
@@ -193,10 +220,35 @@ export default function NodeEditorPanel({
     set({ fields: [...draft.fields, { key, value: "", _k: crypto.randomUUID() }] });
   const removeField = (i) => set({ fields: draft.fields.filter((_, idx) => idx !== i) });
 
+  // Картинка живёт в базе строкой base64, поэтому оригинал класть туда нельзя:
+  // фотография с телефона на 8 МБ превращается в 11 МБ текста внутри проекта,
+  // и открывается он потом соответственно. Ужимаем до разумного размера —
+  // в карточке узла всё равно показывается полоска в четверть экрана.
   const readImage = (file) => {
     if (!file || !file.type.startsWith("image/")) return;
     const reader = new FileReader();
-    reader.onload = () => set({ image: reader.result });
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(img.width, img.height));
+        if (scale === 1 && reader.result.length < IMAGE_MAX_CHARS) {
+          set({ image: reader.result });
+          return;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        // JPEG, а не PNG: скриншот интерфейса в PNG весит втрое больше при
+        // неотличимом на такой ширине качестве. Прозрачность в карточке узла
+        // всё равно не используется.
+        set({ image: canvas.toDataURL("image/jpeg", 0.82) });
+      };
+      // Не разобралось как картинка — кладём как есть, чтобы не потерять файл.
+      img.onerror = () => set({ image: reader.result });
+      img.src = reader.result;
+    };
     reader.readAsDataURL(file);
   };
   const onImageFile = (e) => {
@@ -225,56 +277,99 @@ export default function NodeEditorPanel({
   const suggestions = allTags.filter(
     (t) => !draft.tags.includes(t) && t.toLowerCase().includes(tagInput.trim().toLowerCase())
   ).slice(0, 6);
-  const templates = fieldTemplates(draft.typeId)
+  const templates = fieldTemplates(draft.typeId, projectFields)
     .filter((k) => !draft.fields.some((f) => f.key === k));
   const activeType = nodeTypes.find((t) => t.id === draft.typeId);
+
+  // Тип меняется сразу и отдельным шагом отмены, как из меню узла, — а не
+  // через автосохранение черновика: карточке на холсте нужен новый цвет и
+  // значок тем же кадром, а не через секунду.
+  const pickType = (typeId) => {
+    setTypeOpen(false);
+    if (typeId === draft.typeId) return;
+    setSeenType(typeId);
+    setDraft((d) => ({ ...d, typeId }));
+    onChangeType?.(typeId);
+  };
+
+  // Кандидаты в связь: по имени, без себя и без тех, с кем связь уже есть.
+  // Сначала те, чьё имя начинается с набранного, — их и ищут.
+  const linkedIds = new Set(connections.map((c) => c.id));
+  const q = linkQuery.trim().toLowerCase();
+  const linkResults = linkOpen
+    ? allNodes
+      .filter((n) => n.id !== draft.id && !linkedIds.has(n.id)
+        && (!q || (n.title || "").toLowerCase().includes(q)))
+      .sort((a, b) => (q
+        ? Number(!(a.title || "").toLowerCase().startsWith(q)) - Number(!(b.title || "").toLowerCase().startsWith(q))
+        : 0))
+      .slice(0, 8)
+    : [];
+  const pickLink = (targetId) => {
+    onLink?.(targetId);
+    setLinkQuery("");
+    setLinkOpen(false);
+  };
 
   const statusLabel = tr(`node.status.${status}`);
 
   return (
     <motion.div
-      initial={{ x: "100%" }}
-      animate={{ x: 0 }}
+      initial={{ opacity: 0, x: 12 }}
+      animate={{ opacity: 1, x: 0 }}
 
-      transition={{ type: "tween", duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-      className="absolute top-0 right-0 h-full w-full sm:w-[26rem] border-l sw-panel sw-border-c z-20 flex flex-col"
+      transition={{ type: "tween", duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+      className="sw-dock h-full w-[26rem] shrink-0 border-l sw-panel sw-border-c z-20 flex flex-col"
       data-testid="node-editor-panel"
     >
-      <div className="flex items-center justify-between px-6 py-4 border-b sw-border-c">
-        <div className="flex items-center gap-2 min-w-0">
-          <span
-            className="w-6 h-6 rounded-md flex items-center justify-center shrink-0"
-            style={{ background: activeType?.color || "#64748b" }}
-          >
-            <NodeIcon name={activeType?.icon} className="w-3.5 h-3.5 text-white" />
+      {/* Шапка панели повторяет шапку карточки: значок и название типа, а имя
+          узла — крупной строкой под ними. Раньше здесь стояло имя мелким
+          полужирным, и оно же дублировалось полем «Название» ниже. */}
+      <div
+        className="sw-typed px-6 pt-4 pb-3 border-b sw-border-c"
+        style={{ "--node-color": activeType?.color || "#64748b" }}
+      >
+        <div className="flex items-center gap-2 mb-2.5">
+          <span className="sw-node-badge-icon is-lg">
+            <NodeIcon name={activeType?.icon} className="text-white" />
           </span>
-          <span className="text-sm font-semibold truncate">{draft.title || tr("common.untitled")}</span>
+          <span className="sw-node-type">{activeType?.label || tr("node.noType")}</span>
+          <button onClick={onClose} data-testid="close-editor-btn" className="p-1.5 rounded-md sw-hover shrink-0" title={tr("node.close")}>
+            <X className="w-4 h-4" />
+          </button>
         </div>
-        <button onClick={onClose} data-testid="close-editor-btn" className="p-1.5 rounded-md sw-hover" title={tr("node.close")}>
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      <div className="px-6 py-2 border-b sw-border-c flex items-center gap-1.5 text-[11px] sw-text-dim" data-testid="autosave-status">
-        {status === "saving" ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-        {status === "saved" ? <Check className="w-3 h-3 text-emerald-400" /> : null}
-        {statusLabel}
+        <div className="relative" data-testid="field-title">
+          <AutoTextarea
+            ref={titleRef}
+            data-testid="node-title-input"
+            value={draft.title}
+            singleLine
+            maxRows={3}
+            placeholder={tr("common.untitled")}
+            onFocus={() => setActiveField("title")}
+            onChange={(e) => set({ title: e.target.value })}
+            className="sw-panel-title bg-transparent border-0 px-0"
+          />
+        </div>
       </div>
 
       {/* layoutScroll: ползунок поля живёт внутри прокрутки, и без этой подсказки
           framer меряет его позицию от несдвинутого контейнера — на прокрученной
           панели он уезжал мимо поля. */}
       <motion.div layoutScroll ref={scrollRef} className="flex-1 sw-scroll-y px-6 py-6 space-y-6">
-        {/* Тип меняется правым кликом по узлу — здесь только текущее значение. */}
+        {/* Тип выбирается здесь же. Раньше поле только выглядело выбором, а
+            под ним стояла подсказка идти на холст и искать пункт в меню узла —
+            поле, которое нельзя нажать, хуже, чем поле, которого нет. */}
         <div>
           <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("common.type")}</label>
-          <div
+          <button
+            type="button"
             data-testid="node-current-type"
-            className="mt-2 flex items-center gap-2 px-3 py-2.5 rounded-lg border"
-            style={{
-              borderColor: `${activeType?.color || "#64748b"}66`,
-              background: `${activeType?.color || "#64748b"}14`,
-            }}
+            onClick={() => setTypeOpen((v) => !v)}
+            aria-expanded={typeOpen}
+            title={tr("node.changeType")}
+            className="sw-type-pick mt-2 w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-left"
+            style={{ "--node-color": activeType?.color || "#64748b" }}
           >
             <span
               className="w-5 h-5 rounded flex items-center justify-center shrink-0"
@@ -283,24 +378,28 @@ export default function NodeEditorPanel({
               <NodeIcon name={activeType?.icon} className="w-3 h-3 text-white" />
             </span>
             <span className="text-sm flex-1 truncate">{activeType?.label || tr("node.noType")}</span>
-            <MousePointerClick className="w-3.5 h-3.5 sw-text-dim shrink-0" />
-          </div>
-          <p className="mt-1.5 text-[11px] sw-text-dim">
-            {tr("node.typeHint")}
-          </p>
-        </div>
-
-        <div className="relative pl-3" data-testid="field-title">
-          <FieldRail show={activeField === "title"} />
-          <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("common.name")}</label>
-          <Input
-            ref={titleRef}
-            data-testid="node-title-input"
-            value={draft.title}
-            onFocus={() => setActiveField("title")}
-            onChange={(e) => set({ title: e.target.value })}
-            className="mt-2 bg-transparent sw-border-c"
-          />
+            <ChevronDown className={`w-3.5 h-3.5 sw-text-dim shrink-0 transition-transform ${typeOpen ? "rotate-180" : ""}`} />
+          </button>
+          {typeOpen && (
+            <div className="mt-1.5 grid grid-cols-2 gap-1 p-1 rounded-lg border sw-border-c sw-surface" data-testid="node-type-picker">
+              {nodeTypes.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  data-testid={`node-type-option-${t.id}`}
+                  onClick={() => pickType(t.id)}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-left sw-hover
+                    ${t.id === draft.typeId ? "bg-[var(--sw-hover)]" : ""}`}
+                >
+                  <span className="w-4 h-4 rounded flex items-center justify-center shrink-0" style={{ background: t.color }}>
+                    <NodeIcon name={t.icon} className="w-2.5 h-2.5 text-white" />
+                  </span>
+                  <span className="truncate flex-1">{t.label}</span>
+                  {t.id === draft.typeId && <Check className="w-3 h-3 sw-accent-text shrink-0" />}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Даты узла — их может быть несколько — и холст, на котором он лежит. */}
@@ -318,23 +417,21 @@ export default function NodeEditorPanel({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          {canvases.length > 1 && (
-            <div>
-              <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.canvas")}</label>
-              <select
-                data-testid="node-canvas-select"
-                value={draft.canvas || canvases[0].id}
-                onChange={(e) => set({ canvas: e.target.value })}
-                className="mt-2 w-full h-9 rounded-md border sw-border-c bg-transparent text-xs px-2"
-              >
-                {canvases.map((c) => (
-                  <option key={c.id} value={c.id} style={{ background: "var(--sw-surface)", color: "var(--sw-text)" }}>{c.label}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
+        {canvases.length > 1 && (
+          <div>
+            <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.canvas")}</label>
+            <select
+              data-testid="node-canvas-select"
+              value={draft.canvas || canvases[0].id}
+              onChange={(e) => set({ canvas: e.target.value })}
+              className="mt-2 w-full h-9 rounded-md border sw-border-c bg-transparent text-xs px-2"
+            >
+              {canvases.map((c) => (
+                <option key={c.id} value={c.id} style={{ background: "var(--sw-surface)", color: "var(--sw-text)" }}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="relative pl-3" data-testid="field-description">
           <FieldRail show={activeField === "description"} />
@@ -368,8 +465,8 @@ export default function NodeEditorPanel({
               onFocusCapture={() => setActiveField("description")}
             >
               <MarkdownEditor
-                // key по узлу: у редактора своя разбивка на блоки, и её надо
-                // собрать заново под чужой текст, а не донашивать прежнюю.
+                // key по узлу: редактор держит своё состояние правки, и под
+                // чужой текст его надо заводить заново, а не донашивать прежнее.
                 key={nodeId}
                 ref={descRef}
                 {...descEditorProps}
@@ -385,28 +482,94 @@ export default function NodeEditorPanel({
           </p>
         </div>
 
-        {/* Connections */}
+        {/* Связи. Завести и убрать связь можно отсюда же: раньше список был
+            только для чтения, а связь тянули мышью от точки на карточке —
+            к узлу за краем экрана или на другом холсте её было не провести. */}
         <div>
-          <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim flex items-center gap-2">
-            <Link2 className="w-3 h-3" /> {tr("node.links")} {connections.length > 0 && `(${connections.length})`}
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim flex items-center gap-2">
+              <Link2 className="w-3 h-3" /> {tr("node.links")} {connections.length > 0 && `(${connections.length})`}
+            </label>
+            {onLink && (
+              <button
+                type="button"
+                data-testid="add-link-btn"
+                onClick={() => { setLinkOpen((v) => !v); setLinkQuery(""); }}
+                className="flex items-center gap-1 text-xs sw-accent-text hover:opacity-80"
+              >
+                <Plus className="w-3.5 h-3.5" /> {tr("node.linkTo")}
+              </button>
+            )}
+          </div>
+          {linkOpen && (
+            <div className="mt-2 rounded-lg border sw-border-c sw-surface p-1" data-testid="link-picker">
+              <Input
+                autoFocus
+                data-testid="link-search-input"
+                value={linkQuery}
+                onChange={(e) => setLinkQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  // Esc закрывает поиск, а не всю панель: общий обработчик
+                  // редактора висит на window и иначе закрыл бы узел.
+                  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setLinkOpen(false); }
+                  if (e.key === "Enter" && linkResults[0]) { e.preventDefault(); pickLink(linkResults[0].id); }
+                }}
+                placeholder={tr("node.linkSearch")}
+                className="bg-transparent border-0 text-xs h-8 focus-visible:ring-0"
+              />
+              <div className="max-h-56 sw-scroll-y">
+                {linkResults.length === 0 && (
+                  <p className="px-2.5 py-2 text-xs sw-text-dim">{tr("node.linkNothing")}</p>
+                )}
+                {linkResults.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    data-testid={`link-option-${n.id}`}
+                    onClick={() => pickLink(n.id)}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md sw-hover text-left"
+                  >
+                    <span
+                      className="w-4 h-4 rounded flex items-center justify-center shrink-0"
+                      style={{ background: n.nodeType?.color || "#64748b" }}
+                    >
+                      <NodeIcon name={n.nodeType?.icon} className="w-2.5 h-2.5 text-white" />
+                    </span>
+                    <span className="text-sm truncate flex-1">{n.title || tr("common.untitled")}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="mt-2 space-y-1">
-            {connections.length === 0 && (
+            {connections.length === 0 && !linkOpen && (
               <p className="text-xs sw-text-dim">{tr("node.noLinks")}</p>
             )}
             {connections.map((c) => (
-              <button
-                key={c.edgeId}
-                data-testid={`connection-${c.id}`}
-                onClick={() => onOpenNode && onOpenNode(c.id)}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg sw-hover text-left"
-              >
-                {c.outgoing
-                  ? <ArrowRight className="w-3.5 h-3.5 shrink-0" style={{ color: c.color }} />
-                  : <ArrowLeft className="w-3.5 h-3.5 shrink-0" style={{ color: c.color }} />}
-                <span className="text-sm truncate flex-1">{c.title || tr("common.untitled")}</span>
-                {c.label && <span className="text-[10px] sw-text-dim truncate max-w-[7rem]">{c.label}</span>}
-              </button>
+              <div key={c.edgeId} className="group flex items-center rounded-lg sw-hover">
+                <button
+                  data-testid={`connection-${c.id}`}
+                  onClick={() => onOpenNode && onOpenNode(c.id)}
+                  className="flex-1 min-w-0 flex items-center gap-2 px-2.5 py-1.5 text-left"
+                >
+                  {c.outgoing
+                    ? <ArrowRight className="w-3.5 h-3.5 shrink-0" style={{ color: c.color }} />
+                    : <ArrowLeft className="w-3.5 h-3.5 shrink-0" style={{ color: c.color }} />}
+                  <span className="text-sm truncate flex-1">{c.title || tr("common.untitled")}</span>
+                  {c.label && <span className="text-[10px] sw-text-dim truncate max-w-[7rem]">{c.label}</span>}
+                </button>
+                {onUnlink && (
+                  <button
+                    type="button"
+                    data-testid={`unlink-${c.id}`}
+                    onClick={() => onUnlink(c.edgeId)}
+                    title={tr("node.unlink")}
+                    className="p-1.5 mr-1 rounded-md text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -523,20 +686,25 @@ export default function NodeEditorPanel({
           )}
           <div className="space-y-2">
             {draft.fields.map((f, i) => (
-              <div key={f._k} className="flex items-center gap-2">
-                <Input
+              // items-start, а не center: поля разной высоты, и кнопка удаления
+              // должна держаться верхней строки, а не уезжать к середине.
+              <div key={f._k} className="flex items-start gap-2">
+                <AutoTextarea
                   value={f.key}
+                  singleLine
+                  maxRows={3}
                   onChange={(e) => setField(i, { key: e.target.value })}
                   placeholder={tr("node.fieldPlaceholder")}
-                  className="bg-transparent sw-border-c font-mono-sw text-xs h-9"
+                  className="bg-transparent sw-border-c font-mono-sw text-xs py-2 leading-5"
                 />
-                <Input
+                <AutoTextarea
                   value={f.value}
+                  maxRows={10}
                   onChange={(e) => setField(i, { value: e.target.value })}
                   placeholder={tr("node.valuePlaceholder")}
-                  className="bg-transparent sw-border-c text-xs h-9"
+                  className="bg-transparent sw-border-c text-xs py-2 leading-5"
                 />
-                <button onClick={() => removeField(i)} className="p-1.5 rounded-md hover:bg-red-500/10 text-red-400 shrink-0">
+                <button onClick={() => removeField(i)} className="p-1.5 mt-1 rounded-md hover:bg-red-500/10 text-red-400 shrink-0">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -560,13 +728,19 @@ export default function NodeEditorPanel({
           </>
         ) : (
           <>
-            <Button
-              data-testid="save-node-btn"
-              onClick={() => onSave(draft, { close: true })}
-              className="flex-1 sw-accent-bg text-white border-0 hover:opacity-90 gap-2"
+            {/* Статус вместо кнопки «Готово». Панель сохраняет сама, и крупная
+                кнопка сохранения внушала, что без неё правка пропадёт, — а
+                отдельная строка статуса под шапкой съедала высоту ради двух
+                слов. Ctrl+S по-прежнему пишет сразу. */}
+            <span
+              className="flex-1 min-w-0 flex items-center gap-1.5 text-[11px] sw-text-dim"
+              data-testid="autosave-status"
+              title="Ctrl+S"
             >
-              <Save className="w-4 h-4" /> {tr("common.done")}
-            </Button>
+              {status === "saving" ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : null}
+              {status === "saved" ? <Check className="w-3 h-3 text-emerald-400 shrink-0" /> : null}
+              <span className="truncate">{statusLabel}</span>
+            </span>
             {onDuplicate && (
               <Button
                 data-testid="duplicate-node-btn"

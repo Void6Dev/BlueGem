@@ -61,8 +61,14 @@ contextBridge.exposeInMainWorld("bluegem", {
     install: (tag) => ipcRenderer.invoke("bg:update-install", tag),
     onProgress: (handler) => subscribe("bg:update-progress", handler),
   },
-  /** Открыть форму нового issue с подставленной версией и системой. */
+  /**
+   * Отправить отзыв письмом автору. Возвращает { ok } либо { ok: false, error,
+   * url } — по ошибке интерфейс предлагает открыть issue на GitHub, а текст
+   * остаётся в форме.
+   */
   sendFeedback: (payload) => ipcRenderer.invoke("bg:feedback", payload || {}),
+  /** Ссылка на issue с подставленным текстом — запасной путь отправки. */
+  feedbackUrl: (payload) => ipcRenderer.invoke("bg:feedback-url", payload || {}),
 });
 
 /** Подписка, отдающая наружу только полезную нагрузку (без объекта события). */

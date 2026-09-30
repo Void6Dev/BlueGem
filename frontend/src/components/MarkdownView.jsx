@@ -1,92 +1,52 @@
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { useMemo } from "react";
+import { renderMarkdown } from "@/lib/miniMarkdown";
 import { useT } from "@/lib/i18n";
 
-// [[Title]] -> ссылка на существующий узел (node:<id>) либо предложение создать
-// новый (new:<title>) — так заметка сама подсказывает, чего в мире не хватает.
-function preprocess(text, nodesByTitle) {
-  return (text || "").replace(/\[\[([^\]]+)\]\]/g, (_, name) => {
-    const clean = name.trim();
-    const id = nodesByTitle[clean.toLowerCase()];
-    return id ? `[${clean}](node:${id})` : `[${clean}](new:${encodeURIComponent(clean)})`;
-  });
-}
-
 /**
+ * Собранный markdown — и на карточке холста, и в панели справа.
+ *
+ * Разбор один на оба места (lib/miniMarkdown), и это не только про скорость.
+ * Пока их было два — свой на карточке и react-markdown в панели, — один и тот
+ * же текст выглядел по-разному в двух местах одного экрана: разные наборы
+ * поддержанного синтаксиса, разные сноски, английский заголовок «Footnotes»
+ * посреди русского интерфейса. Теперь разница между режимами ровно одна и
+ * названа явно: в панели ссылки живые, на карточке — нет, потому что кликом по
+ * карточке владеет холст.
+ *
  * @param {object} p
- * @param {boolean} [p.compact] режим карточки на холсте: markdown рисуется,
- *   но ссылки становятся обычным текстом — кликом по карточке владеет холст.
+ * @param {boolean} [p.compact] режим карточки на холсте.
  */
 export default function MarkdownView({ text, nodes = [], onOpenNode, onCreateNode, compact = false }) {
   const t = useT();
-  const nodesByTitle = {};
-  nodes.forEach((n) => {
-    if (n.title) nodesByTitle[n.title.trim().toLowerCase()] = n.id;
-  });
-  const src = preprocess(text, nodesByTitle);
+  // Карта названий: по ней [[Ссылка]] находит узел. Строится по всем узлам
+  // проекта, поэтому по памяти — набор в описании перерисовывает просмотр на
+  // каждую букву.
+  const nodesByTitle = useMemo(() => {
+    const map = {};
+    for (const n of nodes) if (n.title) map[n.title.trim().toLowerCase()] = n.id;
+    return map;
+  }, [nodes]);
 
-  if (!text || !text.trim()) {
+  const tree = useMemo(() => {
+    if (!text || !text.trim()) return null;
+    if (compact) return renderMarkdown(text);
+    return renderMarkdown(text, {
+      doc: true,
+      nodesByTitle,
+      onOpenNode,
+      onCreateNode,
+      createTitle: (title) => t("markdown.createNode", { title }),
+      missingTitle: t("markdown.missingNode"),
+    });
+  }, [text, compact, nodesByTitle, onOpenNode, onCreateNode, t]);
+
+  if (!tree) {
     return <p className={`sw-text-dim ${compact ? "text-xs" : "text-sm"}`}>{t("common.noDescription")}</p>;
   }
 
   if (compact) {
-    return (
-      <div className="sw-md sw-md-compact text-xs leading-relaxed pointer-events-none">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          urlTransform={(url) => url}
-          components={{
-            a: ({ children }) => <span className="sw-accent-text">{children}</span>,
-          }}
-        >
-          {src}
-        </ReactMarkdown>
-      </div>
-    );
+    return <div className="sw-md sw-md-compact text-xs leading-relaxed pointer-events-none">{tree}</div>;
   }
 
-  return (
-    <div className="sw-md sw-md-doc leading-relaxed">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        urlTransform={(url) => url}
-        components={{
-          a: ({ href, children }) => {
-            if (href?.startsWith("node:")) {
-              const id = href.slice(5);
-              return (
-                <button
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); onOpenNode?.(id); }}
-                  className="sw-accent-text underline underline-offset-2 hover:opacity-80"
-                >
-                  {children}
-                </button>
-              );
-            }
-            if (href?.startsWith("new:")) {
-              const title = decodeURIComponent(href.slice(4));
-              return (
-                <button
-                  type="button"
-                  title={onCreateNode ? t("markdown.createNode", { title }) : t("markdown.missingNode")}
-                  onClick={(e) => { e.preventDefault(); onCreateNode?.(title); }}
-                  className="sw-text-dim underline decoration-dashed underline-offset-2 hover:sw-accent-text"
-                >
-                  {children}
-                </button>
-              );
-            }
-            return (
-              <a href={href} target="_blank" rel="noreferrer" className="sw-accent-text underline">
-                {children}
-              </a>
-            );
-          },
-        }}
-      >
-        {src}
-      </ReactMarkdown>
-    </div>
-  );
+  return <div className="sw-md sw-md-doc leading-relaxed">{tree}</div>;
 }

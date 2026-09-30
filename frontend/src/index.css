@@ -14,8 +14,8 @@
     --card-foreground: 0 0% 96%;
     --popover: 240 10% 20%;
     --popover-foreground: 0 0% 96%;
-    --primary: 239 84% 67%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 194 78% 56%;
+    --primary-foreground: 196 76% 10%;
     --secondary: 240 10% 16%;
     --secondary-foreground: 0 0% 96%;
     --muted: 240 10% 16%;
@@ -26,7 +26,7 @@
     --destructive-foreground: 0 0% 100%;
     --border: 240 10% 20%;
     --input: 240 10% 20%;
-    --ring: 239 84% 67%;
+    --ring: 194 78% 56%;
     --radius: 0.5rem;
   }
 
@@ -56,17 +56,31 @@
    только для отрыва от холста. */
 :root {
   --sw-bg: #0A0A0F;
-  --sw-surface-0: #141419;
-  --sw-surface: #1B1B22;
-  --sw-surface-2: #24242C;
-  --sw-surface-3: #2E2E38;
-  --sw-elevated: rgba(27, 27, 34, 0.86);
-  --sw-border: #2E2E37;
-  --sw-border-strong: #45454F;
-  --sw-text: #F5F5F6;
-  --sw-text-dim: #AFAFBA;
-  --sw-accent: #6366f1;
+  --sw-surface-0: #101015;
+  --sw-surface: #16161C;
+  --sw-surface-2: #1E1E26;
+  --sw-surface-3: #282833;
+  --sw-elevated: rgba(22, 22, 28, 0.86);
+  --sw-border: #2A2A33;
+  --sw-border-strong: #3D3D49;
+  --sw-text: #F2F2F4;
+  --sw-text-dim: #9C9CA8;
+  /* Третья ступень текста. Раньше подписи секций и мелкая мета брали --sw-text-dim
+     с прозрачностью — из-за этого «тише основного» и «тише подписи» оказывались
+     одним тоном, и иерархия читалась только по размеру. */
+  --sw-text-mute: #6E6E7A;
+  /* Циан вместо индиго: акцент не должен совпадать по тону ни с одним типом
+     узла, а индиго сидел вплотную к синему и фиолетовому из TYPE_COLORS. */
+  --sw-accent: #39BEE6;
+  /* Текст на акцентной заливке. Значение пересчитывает applySettings под
+     выбранный акцент (см. lib/settings.js) — светлый циан требует тёмной
+     надписи, тёмный индиго белой, и хардкод «белым по акценту» ломался бы. */
+  --sw-accent-fg: #06222C;
   --sw-font: 'Manrope Variable', sans-serif;
+  /* Крупный текст — своё семейство: у Manrope на 30+ px пропадает характер.
+     Space Grotesk держит тот же геометрический скелет, но с приметной «G». */
+  --sw-font-display: 'Space Grotesk Variable', sans-serif;
+  --sw-font-mono: 'JetBrains Mono Variable', monospace;
   --sw-hover: rgba(255, 255, 255, 0.075);
   --sw-ring: 0 0 0 3px color-mix(in srgb, var(--sw-accent) 28%, transparent);
   --sw-radius: 10px;
@@ -86,6 +100,12 @@
                0 20px 44px -22px rgba(0, 0, 0, 0.85);
   --sw-elev-4: var(--sw-highlight), 0 8px 18px -6px rgba(0, 0, 0, 0.65),
                0 36px 72px -30px rgba(0, 0, 0, 0.9);
+  /* Ступень для карточки на холсте — вторая ступень без дальней тени.
+     Заливка размытой тени считается по её площади, а карточки на холсте лежат
+     внахлёст: у каскада из тридцати дубликатов тридцать размытий по 28
+     пикселей накладываются друг на друга и пересчитываются на каждый кадр
+     движения. Ближней тени хватает, чтобы карточка отделялась от фона. */
+  --sw-elev-card: var(--sw-highlight), 0 2px 6px -2px rgba(0, 0, 0, 0.55);
   /* Прежние имена — те же ступени, чтобы не переписывать полсотни мест. */
   --sw-shadow-sm: var(--sw-elev-1);
   --sw-shadow-md: var(--sw-elev-2);
@@ -116,6 +136,7 @@
   --sw-border-strong: #C9C9C5;
   --sw-text: #111112;
   --sw-text-dim: #6B6B72;
+  --sw-text-mute: #94949E;
   --sw-hover: rgba(0, 0, 0, 0.045);
   /* Тень на светлом — в тон акцента: нейтрально-чёрная выглядит грязной. */
   --sw-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.7);
@@ -123,6 +144,7 @@
   --sw-elev-2: 0 2px 6px -2px rgba(28, 26, 44, 0.1), 0 12px 28px -18px rgba(28, 26, 44, 0.3);
   --sw-elev-3: 0 4px 10px -3px rgba(28, 26, 44, 0.12), 0 20px 44px -22px rgba(28, 26, 44, 0.35);
   --sw-elev-4: 0 8px 18px -6px rgba(28, 26, 44, 0.14), 0 36px 72px -30px rgba(28, 26, 44, 0.4);
+  --sw-elev-card: var(--sw-highlight), 0 2px 6px -2px rgba(28, 26, 44, 0.12);
   --sw-edge: #A5A5B0;
   --sw-edge-hover: #74747F;
 }
@@ -155,22 +177,34 @@ body::before {
 }
 .App { position: relative; z-index: 1; }
 
-.font-serif-title {
-  font-family: 'Playfair Display Variable', serif;
+/* Крупные заголовки. Отрицательный трекинг здесь, а не по месту вызова:
+   у Space Grotesk на кегле от 20px дефолтные апроши выглядят разреженными. */
+.sw-display {
+  font-family: var(--sw-font-display);
+  letter-spacing: -0.025em;
 }
 .font-mono-sw {
-  font-family: 'JetBrains Mono Variable', monospace;
+  font-family: var(--sw-font-mono);
 }
 
 .sw-surface {
   background: var(--sw-surface);
   border-color: var(--sw-border);
 }
+/* Приподнятая поверхность: тот же верхний подсвет, что у карточки узла.
+   Плоская заливка на почти чёрном фоне читается как дырка, а не как предмет. */
+.sw-raised {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--sw-surface) 96%, white 4%), var(--sw-surface));
+}
 .sw-surface-2 { background: var(--sw-surface-2); }
 .sw-bg { background: var(--sw-bg); }
 .sw-text-dim { color: var(--sw-text-dim); }
+.sw-text-mute { color: var(--sw-text-mute); }
 .sw-border-c { border-color: var(--sw-border); }
 .sw-accent-bg { background: var(--sw-accent); }
+/* Пара к .sw-accent-bg: надпись поверх акцента. */
+.sw-accent-fg { color: var(--sw-accent-fg); }
 .sw-accent-text { color: var(--sw-accent); }
 .sw-accent-soft { background: color-mix(in srgb, var(--sw-accent) 14%, transparent); }
 
@@ -228,9 +262,100 @@ body::before {
   font-size: 10px;
   line-height: 12px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--sw-text-dim) 75%, transparent);
+  color: var(--sw-text-mute);
+}
+
+/* ------------------------------------------------------------------
+   Сегментированный переключатель. Один компонент на четыре места: тема,
+   вид карточек, сортировка на панели проектов и тулбар холста. Раньше
+   каждое из них рисовало свой вариант «выбранного из двух», и выбранное
+   выглядело то акцентной заливкой, то рамкой — по-разному в соседних
+   секциях одной панели.
+   ------------------------------------------------------------------ */
+.sw-seg {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 9px;
+  background: var(--sw-surface-2);
+}
+.sw-seg-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--sw-text-dim);
+  transition: background-color 0.16s var(--sw-ease), color 0.16s var(--sw-ease);
+}
+.sw-seg-item:hover { color: var(--sw-text); }
+.sw-seg-item[aria-pressed="true"] {
+  background: var(--sw-surface-3);
+  color: var(--sw-text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.sw-light .sw-seg-item[aria-pressed="true"] { box-shadow: var(--sw-elev-1); }
+/* Поверх стекла тулбара трек светлым не читается — нужен провал, а не подъём. */
+.sw-seg-glass { height: 26px; padding: 2px; border-radius: 8px; background: rgba(0, 0, 0, 0.35); }
+.sw-light .sw-seg-glass { background: rgba(0, 0, 0, 0.07); }
+.sw-seg-glass .sw-seg-item { height: 22px; padding: 0 9px; font-size: 11.5px; }
+/* Акцентный вариант: выбранное — заливка акцентом, а не подъём поверхности.
+   Годится там, где переключатель один на весь блок и спорить не с кем. */
+.sw-seg-accent .sw-seg-item[aria-pressed="true"] {
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+  box-shadow: none;
+}
+
+/* Чип-перечисление: типы узлов шаблона, страницы, любой короткий список,
+   который читают, а не нажимают. */
+.sw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--sw-text-dim) 10%, transparent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--sw-text-dim);
+  white-space: nowrap;
+}
+.sw-chip-plain {
+  height: 23px;
+  padding: 0 9px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  background: var(--sw-surface-2);
+}
+.sw-chip-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+
+/* Полоска состава проекта: доли типов узлов. Зазор между долями, а не сплошная
+   лента, — иначе два соседних тона читаются как один градиент. */
+.sw-type-mix {
+  margin-top: 14px;
+  height: 4px;
+  display: flex;
+  gap: 2px;
+}
+.sw-type-mix > span {
+  height: 100%;
+  min-width: 3px;
+  border-radius: 999px;
+  opacity: 0.85;
 }
 
 /* Один язык бейджей: одна форма, три тона. Тон несёт смысл, форма — нет. */
@@ -321,6 +446,244 @@ kbd {
 .sw-no-scrollbar { scrollbar-width: none; }
 .sw-no-scrollbar::-webkit-scrollbar { display: none; }
 
+/* Правые панели (узел, связь, настройки) — закреплённые: они часть ряда
+   рабочей области, и холст рядом с ними сужается. Раньше панель выезжала
+   поверх холста и закрывала треть карточек — ровно те, что рядом с узлом,
+   который правишь. */
+.sw-dock { position: relative; }
+
+/* ---------------- окно настроек (SettingsPanel) ----------------
+   Окно по центру поверх приглушённого редактора: слева разделы, справа
+   содержимое выбранного. Настройки — не рабочая поверхность, их открывают
+   ненадолго, поэтому место у холста они больше не занимают. */
+.sw-settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--sw-bg) 62%, transparent);
+  animation: swFadeIn 0.14s var(--sw-ease) both;
+}
+.sw-settings-window {
+  display: flex;
+  width: min(1040px, 100%);
+  height: min(760px, 100%);
+  border: 1px solid var(--sw-border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.sw-settings-nav {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 10px;
+  border-right: 1px solid var(--sw-border);
+  background: color-mix(in srgb, var(--sw-bg) 40%, var(--sw-surface));
+}
+.sw-settings-nav-title {
+  padding: 4px 10px 12px;
+  font-family: var(--sw-font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.sw-settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  text-align: left;
+  color: var(--sw-text-dim);
+  transition: background 0.14s var(--sw-ease), color 0.14s var(--sw-ease);
+}
+.sw-settings-nav-item:hover { background: var(--sw-hover); color: var(--sw-text); }
+.sw-settings-nav-item[data-active="true"] {
+  background: var(--sw-surface-2);
+  color: var(--sw-text);
+  box-shadow: inset 2px 0 0 var(--sw-accent);
+}
+.sw-settings-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.sw-settings-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 28px 16px;
+  border-bottom: 1px solid var(--sw-border);
+}
+.sw-settings-title {
+  font-family: var(--sw-font-display);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.sw-settings-about { margin-top: 4px; font-size: 12px; color: var(--sw-text-dim); max-width: 560px; }
+.sw-settings-body {
+  flex: 1;
+  min-height: 0;
+  padding: 24px 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* «Добавить» — строкой под списком, а не ссылкой в углу над ним: новое
+   появляется там, где кнопка, и глазу не надо прыгать. */
+.sw-settings-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px dashed var(--sw-border);
+  font-size: 12px;
+  color: var(--sw-text-dim);
+  transition: background 0.14s var(--sw-ease), color 0.14s var(--sw-ease), border-color 0.14s var(--sw-ease);
+}
+.sw-settings-add:hover { background: var(--sw-hover); color: var(--sw-text); border-color: var(--sw-border-strong); }
+
+/* ---------------- верхняя панель редактора (EditorTopBar) ----------------
+   Закреплённая, сплошная, а не стекло над холстом: это рама окна, и она не
+   должна спорить с карточками за внимание. Три зоны — где я, как смотрю, что
+   делаю; средняя по центру окна, крайние делят остаток. */
+.sw-topbar {
+  flex: none;
+  height: 48px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px;
+  background: var(--sw-surface);
+  border-bottom: 1px solid var(--sw-border);
+  position: relative;
+  z-index: 30;
+}
+.sw-topbar-left, .sw-topbar-center, .sw-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.sw-topbar-right { justify-content: flex-end; }
+.sw-topbar-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--sw-text-dim);
+  transition: background 0.14s var(--sw-ease), color 0.14s var(--sw-ease);
+}
+.sw-topbar-icon:hover { background: var(--sw-hover); color: var(--sw-text); }
+.sw-topbar-project {
+  font-family: var(--sw-font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Имя проекта важнее вкладок: вкладки прокручиваются и растворяются у
+     края, а обрезанное до «Прим…» имя уже ничего не говорит. */
+  max-width: 180px;
+  flex-shrink: 0;
+  padding-left: 2px;
+}
+.sw-topbar-sep { width: 1px; height: 18px; background: var(--sw-border); flex-shrink: 0; margin: 0 2px; }
+.sw-topbar-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 0 1 auto; }
+.sw-topbar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  min-width: 0;
+  width: 240px;
+  flex-shrink: 1;
+  padding: 0 8px 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--sw-border);
+  font-size: 12px;
+  color: var(--sw-text-dim);
+  transition: border-color 0.14s var(--sw-ease), color 0.14s var(--sw-ease);
+}
+.sw-topbar-search:hover { border-color: var(--sw-border-strong); color: var(--sw-text); }
+.sw-topbar-search kbd { margin-left: auto; flex-shrink: 0; }
+.sw-topbar-create {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  flex-shrink: 0;
+  padding: 0 10px 0 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+  transition: filter 0.14s var(--sw-ease);
+}
+.sw-topbar-create:hover { filter: brightness(1.08); }
+/* Узкое окно: сначала уходит подпись поиска, потом имя проекта сжимается. */
+@media (max-width: 1100px) {
+  .sw-topbar-search { width: 36px; padding: 0; justify-content: center; }
+  .sw-topbar-search > span, .sw-topbar-search kbd { display: none; }
+}
+
+/* Ряд вкладок без полосы прокрутки (ScrollStrip): край, за которым есть ещё
+   вкладки, растворяется. Маской, а не наложенным градиентом — фон под рядом
+   разный (панель, стекло над холстом), а маска подходит к любому. */
+.sw-scroll-strip { --strip-fade: 28px; }
+.sw-scroll-strip[data-fade="right"] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--strip-fade)), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--strip-fade)), transparent);
+}
+.sw-scroll-strip[data-fade="left"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--strip-fade));
+  mask-image: linear-gradient(to right, transparent, #000 var(--strip-fade));
+}
+.sw-scroll-strip[data-fade="both"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--strip-fade),
+    #000 calc(100% - var(--strip-fade)), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 var(--strip-fade),
+    #000 calc(100% - var(--strip-fade)), transparent);
+}
+
+/* Выбор типа в панели узла: окрашен тоном типа, как карточка. */
+.sw-type-pick {
+  border-color: color-mix(in srgb, var(--node-color) 40%, transparent);
+  background: color-mix(in srgb, var(--node-color) 8%, transparent);
+  transition: background 0.16s var(--sw-ease), border-color 0.16s var(--sw-ease);
+}
+.sw-type-pick:hover {
+  border-color: color-mix(in srgb, var(--node-color) 65%, transparent);
+  background: color-mix(in srgb, var(--node-color) 14%, transparent);
+}
+
+/* Подпись типа в палитре: до двух строк, а не многоточие после шести букв. */
+.sw-palette-label {
+  min-width: 0;
+  text-align: left;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* React Flow theming.
    v12 styles everything through its own --xy-* custom properties, so setting
    those is what actually wins — plain class overrides lose to the library's
@@ -374,14 +737,18 @@ kbd {
 .sw-light .sw-canvas-vignette {
   background: radial-gradient(120% 100% at 50% 45%, transparent 42%, rgba(16, 16, 20, 0.06) 100%);
 }
-/* Зерно ловит бандинг градиента и убирает пластиковость. */
+/* Зерно ловит бандинг градиента и убирает пластиковость.
+   Без mix-blend-mode: слой смешения во весь экран заставляет браузер держать
+   всё, что под ним, одной группой и перерисовывать её на каждое движение
+   холста — то есть отменяет composited-перенос слоя React Flow, ради которого
+   панорамирование и остаётся дешёвым. Разница на глаз — доли процента
+   прозрачности, разница на кадре — весь экран. */
 .sw-canvas-grain {
   position: absolute; inset: 0; pointer-events: none;
-  opacity: 0.022;
-  mix-blend-mode: overlay;
+  opacity: 0.03;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
 }
-.sw-light .sw-canvas-grain { opacity: 0.015; }
+.sw-light .sw-canvas-grain { opacity: 0.02; }
 /* Холст React Flow перекрыл бы слои своим фоном. */
 .react-flow__renderer, .react-flow__pane { background: transparent; }
 
@@ -441,8 +808,12 @@ kbd {
    цвет, а не цвет рамки инпута. Цвет типа связи проявляется только под
    курсором и в выделении: постоянно разноцветные линии превращают граф в
    спагетти (главная ошибка редакторов вроде Node-RED). */
+/* --sw-edge-self ставит наше ребро: это его собственный цвет (градиент между
+   узлами или заданный руками). Он идёт переменной, а не свойством stroke, —
+   инлайновый stroke перебивал бы правила ниже, и связь переставала бы
+   отзываться на курсор и выделение вовсе. */
 .react-flow__edge-path {
-  stroke: var(--sw-edge);
+  stroke: var(--sw-edge-self, var(--sw-edge));
   stroke-width: var(--sw-edge-w);
   transition: stroke 0.16s var(--sw-ease), stroke-width 0.16s var(--sw-ease),
     opacity 0.2s var(--sw-ease);
@@ -451,11 +822,12 @@ kbd {
    невидимая подложка. */
 .react-flow__edge-interaction { stroke-width: 18; }
 .react-flow__edge:hover .react-flow__edge-path {
-  stroke: var(--rel-color, var(--sw-edge-hover));
+  stroke: var(--sw-edge-self, var(--rel-color, var(--sw-edge-hover)));
   stroke-width: var(--sw-edge-w-hover);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--rel-color, var(--sw-edge-hover)) 35%, transparent));
 }
 .react-flow__edge.selected .react-flow__edge-path {
-  stroke: var(--rel-color, var(--sw-accent));
+  stroke: var(--sw-edge-self, var(--rel-color, var(--sw-accent)));
   stroke-width: var(--sw-edge-w-selected);
   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--rel-color, var(--sw-accent)) 50%, transparent));
 }
@@ -486,6 +858,45 @@ kbd {
   overflow: hidden;
   box-shadow: var(--sw-elev-2);
   border: 1px solid color-mix(in srgb, var(--sw-border) 85%, transparent);
+}
+/* Кнопка мини-карты. Открытая карта — «−» в её правом верхнем углу, видна по
+   наведению; скрытая — значок карты на её месте. Отступы повторяют
+   MINIMAP_STYLE в Editor.jsx: margin 16, высота 116. */
+.sw-minimap-toggle {
+  position: absolute;
+  z-index: 6;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--sw-text-dim);
+  transition: opacity 0.16s var(--sw-ease), color 0.16s var(--sw-ease);
+}
+.sw-minimap-toggle:not(.is-open) { width: 36px; height: 36px; }
+.sw-minimap-toggle:not(.is-open):hover { color: var(--sw-text); }
+.sw-minimap-toggle.is-open {
+  right: 22px;
+  bottom: calc(16px + 116px - 26px);
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--sw-surface-2);
+  border: 1px solid var(--sw-border);
+  opacity: 0;
+}
+.react-flow__minimap:hover + .sw-minimap-toggle.is-open,
+.sw-minimap-toggle.is-open:hover,
+.sw-minimap-toggle.is-open:focus-visible { opacity: 1; }
+.sw-minimap-toggle.is-open:hover { color: var(--sw-text); }
+/* Узкий холст — боковая и правая панели открыты, окно маленькое — мини-карту
+   не показываем вовсе: там она закрывала бы уже треть рабочего места. Меряем
+   холст, а не окно: ширину у него отнимают панели, а не монитор. */
+.sw-canvas-host { container-type: inline-size; }
+@container (max-width: 640px) {
+  .react-flow__minimap,
+  .sw-minimap-toggle { display: none; }
 }
 
 /* Контролы зума — горизонтальная пилюля с процентом вместо столбика кнопок. */
@@ -562,10 +973,147 @@ kbd {
 /* Фокус на соседях: остальной граф уходит, но не исчезает. */
 .sw-node-faded { opacity: 0.4; filter: saturate(0.6); }
 .react-flow__edge.sw-edge-faded { opacity: 0.28; }
+
+/* Опоры связи. Показываются у выделенного ребра и у того, что под курсором,
+   поэтому могут позволить себе заметный размер: попасть по ним важнее, чем не
+   мешать. */
+.sw-edge-point {
+  position: absolute;
+  /* Мышь сквозь них проходит: и опоры, и призрак берутся нажатием на саму
+     линию. Пока точки ловили курсор, наведение мигало — точка вставала под
+     курсор, линия теряла наведение, точка исчезала. */
+  pointer-events: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--sw-surface);
+  border: 2px solid var(--sw-accent);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+  /* Никаких переходов по transform: точка обязана стоять точно под курсором,
+     а плавное «догоняние» на протяжке читается как подтормаживание. */
+  transition: background 0.15s var(--sw-ease);
+}
+/* Опора под курсором и та, которую тянут: видно, что нажатие возьмёт именно её. */
+.sw-edge-point.is-hot {
+  background: var(--sw-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--sw-accent) 18%, transparent);
+}
+/* Призрак будущей опоры: едет по линии за курсором. Пунктирный и бледнее
+   поставленных точек — он обещание, а не элемент пути. Мышь сквозь него
+   проходит: тянут за саму линию под ним. */
+.sw-edge-point.is-add {
+  width: 9px;
+  height: 9px;
+  opacity: 0.7;
+  border-style: dashed;
+  background: transparent;
+  pointer-events: none;
+  animation: swGhostIn 0.12s var(--sw-ease-out);
+}
+@keyframes swGhostIn {
+  from { opacity: 0; }
+}
+
+.sw-edge-label {
+  position: absolute;
+  pointer-events: all;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  background: var(--sw-surface);
+  color: var(--sw-text-dim);
+  border: 1px solid var(--sw-border);
+}
 .sw-node-hit { animation: swPulse 1.4s var(--sw-ease) infinite; }
 /* Валидная цель при протягивании связи: ярче рамка, чуть насыщеннее. */
 .sw-node-target .sw-node-card { border-color: var(--node-tone, var(--sw-accent)); filter: saturate(1.05); }
 .sw-node-muted { opacity: 0.55; }
+
+/* ---------------- щадящий вид на большом графе ----------------
+   Класс вешает редактор, когда узлов становится больше PERF_LIMIT.
+
+   Гасится ровно три вещи, и все три — не украшения ради украшений, а эффекты,
+   которые стоят кадра на каждую карточку и на большом графе всё равно не
+   читаются:
+
+   1. Бесконечные подсветки (найденное, точки связи в режиме «связать с…»).
+      Они анимируют box-shadow, то есть перерисовывают элемент каждый кадр.
+      Найденных карточек бывает тысяча, а точек связи — четыре на карточку.
+   2. filter: saturate() на приглушённых карточках. Каждый filter выносит
+      элемент на свой слой композитора; тысяча слоёв съедает видеопамять и
+      замедляет всё остальное. Приглушение остаётся — прозрачностью, которая
+      композитору ничего не стоит.
+   3. Переход filter при смене отбора: гасить нечего, гасить незачем.
+   4. Тень карточки. Каждая --sw-elev-2 — это два размытия, одно на 28
+      пикселей; заливка размытой тени считается по площади, и на сотнях
+      карточек она становится самой дорогой работой на холсте. Остаётся
+      однопиксельная: на масштабе, при котором смотрят такой граф, разницы
+      между ними не видно.
+   5. Блик под курсором — радиальный градиент во всю карточку. Слой есть на
+      каждой из них, даже пока прозрачен.
+
+   Ни размеры, ни цвета, ни расположение не меняются: холст выглядит тем же,
+   просто перестаёт дышать. */
+.sw-perf .sw-node-hit,
+.sw-perf .sw-node-linking,
+.sw-perf .react-flow__node.sw-node-target .react-flow__handle { animation: none; }
+/* Найденное на большом графе отмечаем неподвижным кольцом — оно и заметнее,
+   когда карточек много: глаз ищет форму, а не пульсацию. */
+.sw-perf .sw-node-hit .sw-node-card {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sw-accent) 55%, transparent);
+}
+.sw-perf .react-flow__node.sw-node-target .react-flow__handle { opacity: 1; }
+.sw-perf .sw-node-dim { opacity: 0.16; filter: none; }
+.sw-perf .sw-node-faded { opacity: 0.38; filter: none; }
+.sw-perf .sw-node-target .sw-node-card { filter: none; }
+.sw-perf .react-flow__node { transition: opacity 0.2s var(--sw-ease); }
+.sw-perf .sw-node-card { box-shadow: var(--sw-elev-1); }
+.sw-perf .sw-node-card:hover { box-shadow: var(--sw-elev-2); }
+.sw-perf .sw-node-card::before { display: none; }
+
+/* ---------------- пока холст едет ----------------
+   Класс висит на холсте, пока идут панорамирование, зум или перенос карточки,
+   и снимается через долю секунды после остановки (markMoving в Editor.jsx).
+
+   Размер графа тут ни при чём — и в этом всё дело. Всё перечисленное ниже
+   считается заново на каждый кадр движения независимо от числа узлов, поэтому
+   рвано становится и на полусотне карточек:
+
+   1. Размытие фона у плавающих панелей. backdrop-filter пересчитывается
+      всякий раз, когда меняется то, что под ним, — то есть каждый кадр. Под
+      стеклом подложка и так непрозрачна на 86%: без размытия разница видна
+      только на стоп-кадре, и только если знать, куда смотреть.
+   2. Блик под курсором: слой с радиальным градиентом на каждой карточке.
+      Курсор во время движения холста всё равно не над карточкой.
+   3. filter: saturate() на приглушённых — каждый выносит карточку на свой
+      слой композитора, и слои эти пересобираются вместе с движением.
+   4. Переходы. Анимировать тень и рамку в тот момент, когда едет весь холст,
+      значит считать промежуточные кадры, которых никто не разглядывает. */
+.sw-moving .sw-glass { backdrop-filter: none; -webkit-backdrop-filter: none; }
+.sw-moving .sw-node-card::before { display: none; }
+.sw-moving .sw-node-dim,
+.sw-moving .sw-node-faded,
+.sw-moving .sw-node-target .sw-node-card { filter: none; }
+.sw-moving .sw-node-card,
+.sw-moving .react-flow__node,
+.sw-moving .sw-glass,
+.sw-moving .react-flow__handle,
+/* Порог дальнего зума пересекают посреди жеста: без этого все связи холста
+   разом доигрывали бы смену толщины и прозрачности под идущий зум. */
+.sw-moving .react-flow__edge-path { transition: none; }
+/* Пока холст едет, по связям не целятся. У каждой под линией широкая полоса
+   для попадания мышью, и браузер проверяет их все на каждое движение
+   указателя — на полутора сотнях связей это заметная работа ровно в тот
+   момент, когда она никому не нужна. */
+.sw-moving .react-flow__edge-interaction { pointer-events: none; }
+/* Холст — отдельный слой композитора, и объявлено это навсегда, а не на время
+   жеста. Так было сначала: класс движения включал will-change и выключал
+   обратно. Это ошибка, и известная — браузер на каждое такое включение
+   заводит слой заново, а на выключение растрирует всё обратно, то есть платит
+   дважды за каждый жест ровно там, где мы пытались сэкономить. Постоянный слой
+   стоит немного видеопамяти, зато панорамирование становится сдвигом готовой
+   картинки, а не перерисовкой текста, рамок и теней под новый масштаб. */
+.react-flow__viewport { will-change: transform; }
 
 /* ---------------- карточка узла ----------------
    --node-color приходит из данных узла. Тон, которым карточка пользуется,
@@ -577,59 +1125,193 @@ kbd {
 
 .sw-node-card {
   position: relative;
+  /* Карточка отвечает за свою разметку сама: перетекание текста внутри неё не
+     повод пересчитывать соседние. На холсте карточек столько же, сколько узлов
+     в проекте, и без этого правка одного описания заставляет браузер обойти
+     весь холст. */
+  contain: layout style;
+  /* Содержимое узлов выделять можно — это текст, а не подпись кнопки. */
+  user-select: text;
   border-radius: 14px;
   border: 1px solid color-mix(in srgb, var(--sw-border) 90%, transparent);
   background: linear-gradient(180deg,
     color-mix(in srgb, var(--sw-surface) 98%, white 2%), var(--sw-surface));
-  box-shadow: var(--sw-elev-2);
+  box-shadow: var(--sw-elev-card);
   overflow: hidden;
+  /* Масштаб — с перелётом на возврате: карточка не «приезжает» на место, а
+     оседает. Разница в полсекунды, а рука ей верит. */
   transition: box-shadow 0.16s var(--sw-ease), border-color 0.16s var(--sw-ease),
-    filter 0.16s var(--sw-ease);
+    filter 0.16s var(--sw-ease), transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 /* Карточка по ховеру не двигается: подъём даёт тень и хайлайт, а сдвиг лишь
    отрывает конец связи от края (хэндлы живут на обёртке). */
 .sw-node-card:hover { border-color: var(--sw-border-strong); box-shadow: var(--sw-elev-3); }
-.sw-node-card.is-selected {
-  border-color: var(--node-tone, var(--sw-accent));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-tone, var(--sw-accent)) 22%, transparent),
-    var(--sw-elev-3);
+/* Блик под курсором. Координаты приходят переменными из CustomNode. Слой поверх
+   всего содержимого и сквозной для мыши: это свет, а не элемент. */
+.sw-node-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s var(--sw-ease);
+  background: radial-gradient(200px circle at var(--mx, 50%) var(--my, 0%),
+    color-mix(in srgb, var(--node-tone) 13%, transparent), transparent 62%);
+}
+.sw-node-card:hover::before { opacity: 1; }
+/* Нажатие проминает карточку — тот же отклик, что у клавиши. */
+.sw-node-card:active { transform: scale(0.995); }
+/* Выделение — отдельным слоем поверх карточки, а не её собственной тенью.
+   Пока «дыхание» анимировало box-shadow самой карточки, оно перебивало любую
+   другую тень на ней: выделенная карточка переставала отзываться на курсор,
+   а развёрнутая и перетаскиваемая теряли свою подсветку — анимация всегда
+   важнее обычного правила. Кольцо внутреннее: у карточки overflow: hidden,
+   и внешнее она бы срезала. */
+.sw-node-card.is-selected { border-color: var(--node-tone, var(--sw-accent)); }
+.sw-node-card.is-selected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 2px var(--node-tone, var(--sw-accent));
   animation: swBreathe 2.4s ease-in-out infinite;
 }
 @keyframes swBreathe {
-  0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-tone, var(--sw-accent)) 20%, transparent), var(--sw-elev-3); }
-  50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-tone, var(--sw-accent)) 28%, transparent), var(--sw-elev-3); }
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }
-/* Шапка — насыщенная плашка, а не блёклый градиент: она опознаётся с
-   расстояния, когда текст уже нечитаем. Рельс сверху доживает до 4 пикселей. */
+/* Шапка. Цвет типа несут рельс и значок, а не заливка всей полосы: на графе из
+   полусотни карточек полсотни насыщенных плашек перебивали содержимое, ради
+   которого карточки и смотрят. Название типа стоит текстом — цвет один и тот же
+   у двух типов из восьми, если смотреть боковым зрением, а слово однозначно. */
 .sw-node-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 12px;
-  height: 40px;
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--node-tone) 30%, var(--sw-surface)),
-    color-mix(in srgb, var(--node-tone) 16%, var(--sw-surface)));
-  border-bottom: 1px solid color-mix(in srgb, var(--node-tone) 34%, transparent);
-  box-shadow: inset 0 3px 0 0 var(--node-tone);
-  transition: box-shadow 0.16s var(--sw-ease);
+  padding: 0 10px 0 13px;
+  height: 32px;
+  border-bottom: 1px solid color-mix(in srgb, var(--sw-border) 75%, transparent);
 }
-.sw-node-card:hover .sw-node-head {
-  box-shadow: inset 0 3px 0 0 color-mix(in srgb, var(--node-tone) 88%, white);
+.sw-node-card.is-detailed .sw-node-head { height: 36px; padding-left: 11px; }
+/* Рельс — то, что делает тип читаемым при zoom-out, когда от карточки остаётся
+   несколько пикселей. В компактном виде он вертикальный во всю высоту (карточек
+   на экране много, а высота у них разная), в подробном — горизонтальный сверху
+   над картинкой. */
+.sw-node-rail {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--node-tone);
+  transition: filter 0.16s var(--sw-ease);
 }
-/* Края букв на цветном фоне перестают «дрожать». */
-.sw-node-head-title { text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25); }
-.sw-light .sw-node-head-title { text-shadow: none; }
+.sw-node-card.is-detailed .sw-node-rail {
+  right: 0;
+  bottom: auto;
+  width: auto;
+  height: 3px;
+}
+.sw-node-card:hover .sw-node-rail { filter: brightness(1.18); }
+
+/* ---------------- дальний зум: карта вместо карточек ----------------
+   Ниже FAR_ZOOM (CustomNode.jsx) карточка — плашка цвета своего типа в размер
+   полной карточки. Тип читается заливкой, место — размером, имя — крупным
+   набором. Всё в единицах холста: на экране это пиксели на десятую долю. */
+.sw-node-card.is-far {
+  background: color-mix(in oklab, var(--node-tone) 24%, var(--sw-surface));
+  border-color: color-mix(in oklab, var(--node-tone) 60%, transparent);
+  border-width: 2px;
+  border-radius: 18px;
+}
+.sw-node-card.is-far .sw-node-rail,
+.sw-node-card.is-far::before { display: none; }
+.sw-node-card.is-far:hover { border-color: var(--node-tone); }
+.sw-node-plate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 18px;
+  text-align: center;
+}
+.sw-node-badge-icon.is-plate {
+  width: 48px;
+  height: 48px;
+  border-radius: 13px;
+}
+.sw-node-badge-icon.is-plate svg { width: 26px; height: 26px; }
+.sw-node-plate-title {
+  max-width: 100%;
+  font-family: var(--sw-font-display, inherit);
+  font-size: 34px;
+  line-height: 1.12;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--sw-text);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* Связи на карте — фон, а не рисунок: толще, чтобы не рассыпаться в
+   субпиксельную пыль, и тише, чтобы не перечёркивать плашки. Выделенная и
+   наведённая возвращают себе голос. Подписи связей на таком масштабе не
+   прочесть — они лишь пятнают карту. */
+.sw-far .react-flow__edge-path {
+  stroke-width: calc(var(--sw-edge-w) * 2.5);
+  opacity: 0.45;
+}
+.sw-far .react-flow__edge:hover .react-flow__edge-path,
+.sw-far .react-flow__edge.selected .react-flow__edge-path { opacity: 1; }
+.sw-far .sw-edge-label { display: none; }
+/* Название типа. Тон разбавлен текстовым, иначе на почти чёрном фоне цветной
+   капслок 10px читается как подсветка ошибки. */
+.sw-node-type {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--node-tone) 62%, var(--sw-text));
+}
 .sw-node-badge-icon {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   background: var(--node-tone);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  transition: transform 0.18s var(--sw-ease), box-shadow 0.18s var(--sw-ease);
+}
+.sw-node-card.is-detailed .sw-node-badge-icon,
+.sw-node-badge-icon.is-lg { width: 22px; height: 22px; border-radius: 6px; }
+/* Размер глифа задаём здесь, а не классом в разметке: он зависит от вида
+   карточки, а разметка у обоих видов одна. */
+.sw-node-badge-icon svg { width: 11px; height: 11px; }
+.sw-node-card.is-detailed .sw-node-badge-icon svg,
+.sw-node-badge-icon.is-lg svg { width: 13px; height: 13px; }
+/* Значок типа отзывается на подход курсора: мелочь, но карточка перестаёт быть
+   картинкой и становится предметом. */
+.sw-node-card:hover .sw-node-badge-icon {
+  transform: scale(1.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 0 0 3px color-mix(in srgb, var(--node-tone) 22%, transparent);
 }
 /* Пока картинка грузится — не белая вспышка, а тихая поверхность. */
 .sw-node-img {
@@ -639,8 +1321,11 @@ kbd {
   object-fit: cover;
   object-position: 50% 30%;   /* лица живут в верхней трети кадра */
   background: var(--sw-surface-0);
+  /* Медленный наезд под курсором. Полсекунды — это «дышит», а не «дёргается». */
+  transition: transform 0.5s var(--sw-ease);
 }
-.sw-node-img-wrap { position: relative; }
+.sw-node-card:hover .sw-node-img { transform: scale(1.05); }
+.sw-node-img-wrap { position: relative; overflow: hidden; }
 /* Стык картинки с телом карточки не должен быть резким. */
 .sw-node-img-wrap::after {
   content: "";
@@ -648,23 +1333,303 @@ kbd {
   pointer-events: none;
   background: linear-gradient(transparent 60%, rgba(0, 0, 0, 0.35));
 }
+/* Тело карточки. Клик по нему открывает описание в панели, но на вид это
+   просто текст — поэтому под курсором оно слегка подсвечивается тоном типа и
+   показывает карандаш в углу. Появляется телом же: при возвращении детализации
+   (zoom in) содержимое не выщёлкивается, а проступает. */
+.sw-node-body {
+  position: relative;
+  transition: background-color 0.16s var(--sw-ease);
+  animation: swCardBody 0.2s var(--sw-ease-out);
+}
+.sw-node-body:hover { background: color-mix(in srgb, var(--node-tone) 6%, transparent); }
+/* Название переехало из шапки в тело: в шапке теперь стоит тип. В компактном
+   виде оно набрано интерфейсным шрифтом (строка узкая, характер здесь мешает),
+   в подробном — заголовочным: там карточка читается как статья. */
+.sw-node-title {
+  display: block;
+  font-size: 13.5px;
+  line-height: 17px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: var(--sw-text);
+}
+.sw-node-card.is-detailed .sw-node-title {
+  font-family: var(--sw-font-display);
+  font-size: 15.5px;
+  line-height: 19px;
+  letter-spacing: -0.02em;
+}
+/* Строка названия — отдельный блок, чтобы ховер-подсветка и поле
+   переименования занимали её целиком, а не ширину текста. */
+.sw-node-title-row { display: flex; align-items: center; min-width: 0; }
+
+/* Имя узла в шапке панели: тот же заголовочный кегль, что у названия проекта
+   в боковой панели — панель узла и есть его «страница». */
+.sw-panel-title {
+  font-family: var(--sw-font-display);
+  font-size: 21px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--sw-text);
+  outline: none;
+}
+.sw-panel-title::placeholder { color: var(--sw-text-mute); font-style: italic; }
+.sw-node-edit-hint {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  opacity: 0;
+  color: var(--sw-text-dim);
+  transition: opacity 0.16s var(--sw-ease);
+}
+.sw-node-body:hover .sw-node-edit-hint { opacity: 0.6; }
+@keyframes swCardBody {
+  from { opacity: 0; transform: translateY(-3px); }
+}
+
 /* Поля строками «ключ — значение»: значения выровнены в колонку. */
 .sw-node-fields { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
-.sw-node-field-key { font-size: 11px; line-height: 14px; font-weight: 500; color: var(--sw-text-dim); }
+/* Ключ поля и счётчики — третья ступень: на карточке уже есть текст описания
+   на --sw-text-dim, и подпись к значению должна быть тише него, а не вровень. */
+.sw-node-field-key { font-size: 11px; line-height: 14px; font-weight: 500; color: var(--sw-text-mute); }
 .sw-node-field-val {
   font-size: 12px; line-height: 14px; font-weight: 500; color: var(--sw-text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* Описание режется по строкам, а не по символам: ряд карточек выравнивается. */
-.sw-node-desc {
+/* Режим «граф»: описание — подпись в две строки. Режем по строкам, а не по
+   символам, иначе высота карточек скачет от длины слов. */
+.sw-node-md-clamp {
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--sw-text-dim);
 }
+/* Итог по узлу под содержимым: связи и заполненные поля. */
+.sw-node-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--sw-border) 70%, transparent);
+  font-size: 11px;
+  color: var(--sw-text-mute);
+}
+.sw-node-meta > span { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Ручка изменения ширины: невидимая полоса вдоль правого края. Показывать
+   её постоянно незачем — курсор сам подсказывает, что край тянется. */
+.sw-node-resize {
+  width: 10px !important;
+  height: 100% !important;
+  top: 0 !important;
+  right: -5px !important;
+  cursor: ew-resize;
+}
+/* Под курсором у края всё же проступает хват: без него о том, что карточка
+   тянется, узнают случайно. */
+.sw-node-resize::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  width: 3px;
+  height: 26px;
+  margin-top: -13px;
+  border-radius: 3px;
+  background: var(--sw-border-strong);
+  opacity: 0;
+  transition: opacity 0.16s var(--sw-ease), background-color 0.16s var(--sw-ease);
+}
+.sw-node:hover .sw-node-resize::after { opacity: 0.45; }
+.sw-node-resize:hover::after { opacity: 1; background: var(--node-tone, var(--sw-accent)); }
+
+/* Развёрнутая карточка. Приподнимаем над соседями и подсвечиваем рамку —
+   иначе непонятно, почему одна из карточек вдруг стала длинной. */
+.sw-node-expanded { z-index: 5; }
+.sw-node-expanded .sw-node-card {
+  border-color: var(--node-tone, var(--sw-accent));
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
+}
+
+/* Даты узла. Их бывает несколько, и каждая со своей подписью: «родился»,
+   «основан». Столбиком, а не в строку: даты разной длины, и в строку они
+   рвутся посреди числа. */
+.sw-node-dates { display: flex; flex-direction: column; gap: 2px; }
+.sw-node-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  line-height: 14px;
+  color: var(--sw-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.sw-node-date-key {
+  color: var(--sw-text-mute);
+  text-transform: lowercase;
+}
+.sw-node-date-key::after { content: ":"; }
+
+/* Список соседей в развёрнутой карточке. */
+.sw-node-links { display: flex; flex-direction: column; gap: 2px; }
+.sw-node-links-count {
+  margin-left: 5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--sw-text-dim);
+  letter-spacing: 0;
+}
+/* Подпись связи прижата вправо и уступает названию: сначала «с кем», потом
+   «как». Ужимается первой — название соседа важнее. */
+.sw-node-link-rel {
+  margin-left: auto;
+  padding-left: 6px;
+  flex-shrink: 1;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--sw-text-mute);
+}
+.sw-node-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--sw-text-dim);
+  text-align: left;
+  transition: background 0.14s var(--sw-ease), color 0.14s var(--sw-ease);
+}
+.sw-node-link:hover { background: var(--sw-hover); color: var(--sw-text); }
+.sw-node-link-dir { opacity: 0.6; font-size: 10px; }
+.sw-node-link-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+/* ---------------- быстрый просмотр узла (NodePreview) ----------------
+   Плавает рядом с карточкой в экранных координатах. Сверху — тонкая полоса
+   цвета типа, как рельс подробной карточки: превью читается как её продолжение,
+   а не как ещё одна панель. */
+.sw-preview {
+  position: absolute;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--sw-border);
+  border-top: 3px solid var(--node-tone);
+  border-radius: 14px;
+  overflow: hidden;
+  animation: swPreviewIn 0.16s var(--sw-ease-out) both;
+  transition: opacity 0.12s var(--sw-ease);
+}
+@keyframes swPreviewIn {
+  from { opacity: 0; transform: translateY(4px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+.sw-preview-head { padding: 12px 12px 10px 16px; border-bottom: 1px solid var(--sw-border); }
+.sw-preview-head .sw-node-type { flex: 1; }
+.sw-preview-title {
+  margin-top: 8px;
+  font-family: var(--sw-font-display);
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--sw-text);
+  overflow-wrap: anywhere;
+}
+.sw-preview-body {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 13px;
+}
+.sw-preview-img {
+  width: 100%;
+  max-height: 170px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--sw-border);
+}
+/* Значение поля в превью переносится, а не режется: здесь его и читают. */
+.sw-preview-field-val {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--sw-text);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.sw-preview-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px 8px 10px;
+  border-top: 1px solid var(--sw-border);
+}
+.sw-preview-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--sw-text);
+  transition: background 0.14s var(--sw-ease);
+}
+.sw-preview-edit:hover { background: var(--sw-hover); }
+.sw-preview-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--sw-text-dim);
+  transition: background 0.14s var(--sw-ease), color 0.14s var(--sw-ease);
+}
+.sw-preview-act:hover { background: var(--sw-hover); color: var(--sw-text); }
+
+/* Панель мультивыделения: сверху по центру холста, пока выбрано больше
+   одного узла. У одного узла её роль играет строка действий в превью. */
+.sw-selbar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 16;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--sw-border);
+  animation: swPreviewIn 0.14s var(--sw-ease-out) both;
+}
+.sw-selbar-count {
+  padding: 0 8px 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--sw-text);
+  white-space: nowrap;
+}
+.sw-selbar-sep { width: 1px; height: 18px; background: var(--sw-border); margin: 0 4px; }
+
+/* Метка связей на других холстах: тот же размер, что у счётчика связей,
+   но акцентная — она кликабельна, в отличие от соседа. */
+.sw-badge-cross {
+  background: color-mix(in srgb, var(--sw-accent) 16%, transparent);
+  color: var(--sw-accent);
+  cursor: pointer;
+}
+.sw-badge-cross:hover { background: color-mix(in srgb, var(--sw-accent) 28%, transparent); }
+
 .sw-node-tag {
   display: inline-flex;
   align-items: center;
@@ -685,8 +1650,6 @@ kbd {
 }
 /* «Без названия» отличается от настоящего имени «Без названия». */
 .sw-untitled { font-style: italic; opacity: 0.85; }
-/* Содержимое узлов выделять можно — это текст, а не подпись кнопки. */
-.sw-node-card { user-select: text; }
 /* Внешняя обёртка узла гаснет только прозрачностью. Любой transform на ней
    искажает getBoundingClientRect точек связи, а React Flow снимает их размеры
    ровно один раз при появлении узла — и связь потом рисуется мимо точки.
@@ -710,12 +1673,17 @@ kbd {
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-/* Узел под перетаскиванием ощущается физически поднятым. */
+/* Узел под перетаскиванием ощущается физически поднятым: подъём мгновенный, а
+   опускание — по базовому переходу карточки, с лёгким перелётом. Рамка на время
+   переноса берёт цвет типа, и блик горит, даже если курсор ушёл с карточки. */
 .react-flow__node.dragging .sw-node-card {
   transform: scale(1.02);
-  box-shadow: var(--sw-elev-4);
+  border-color: var(--node-tone, var(--sw-accent));
+  box-shadow: var(--sw-elev-4),
+    0 0 0 3px color-mix(in srgb, var(--node-tone, var(--sw-accent)) 16%, transparent);
   transition: transform 0.12s var(--sw-ease-out), box-shadow 0.12s var(--sw-ease-out);
 }
+.react-flow__node.dragging .sw-node-card::before { opacity: 1; }
 .react-flow__node.dragging { cursor: grabbing; }
 
 /* ---------------- сайдбар ----------------
@@ -733,6 +1701,12 @@ kbd {
   border-radius: 7px;
   text-align: left;
   transition: background-color 0.16s var(--sw-ease), box-shadow 0.16s var(--sw-ease);
+  /* Строк в списке столько же, сколько узлов в проекте, а видно из них два
+     десятка. Браузер пропускает разметку и заливку тех, что за пределами
+     прокрутки, — высота у строки фиксированная, поэтому полоса прокрутки от
+     этого не дёргается. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 30px;
 }
 .sw-list-item:hover { background: var(--sw-hover); }
 /* Активный — рельс в цвет типа слева, тенью: border сдвинул бы содержимое. */
@@ -741,6 +1715,107 @@ kbd {
   box-shadow: inset 2px 0 0 var(--node-tone, var(--sw-accent));
 }
 .sw-list-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--node-tone); }
+
+/* ---------------- структура мира (WorldTree) ----------------
+   Группа типа: заголовок с иконкой, числом и «+», под ним узлы с отступом.
+   «+» проявляется под курсором — в покое дерево читается как список, а не как
+   пульт из кнопок. Пустая группа тише остальных, но на месте. */
+.sw-tree-group + .sw-tree-group { margin-top: 2px; }
+.sw-tree-head {
+  display: flex;
+  align-items: center;
+  border-radius: 7px;
+  cursor: grab;
+  transition: background 0.14s var(--sw-ease), opacity 0.14s var(--sw-ease);
+}
+.sw-tree-head:hover { background: var(--sw-hover); }
+.sw-tree-head.is-empty { opacity: 0.6; }
+.sw-tree-head.is-empty:hover { opacity: 1; }
+.sw-tree-head.is-dragging { opacity: 0.45; }
+.sw-tree-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sw-text);
+  text-align: left;
+  cursor: inherit;
+}
+.sw-tree-toggle > .truncate { flex: 1; min-width: 0; }
+.sw-tree-toggle > svg { color: var(--sw-text-dim); }
+.sw-tree-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--node-tone);
+}
+.sw-tree-add {
+  width: 26px;
+  height: 26px;
+  margin-right: 2px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--sw-text-dim);
+  opacity: 0;
+  transition: opacity 0.14s var(--sw-ease), background 0.14s var(--sw-ease), color 0.14s var(--sw-ease);
+}
+.sw-tree-head:hover .sw-tree-add,
+.sw-tree-add:focus-visible { opacity: 1; }
+.sw-tree-add:hover { background: var(--sw-surface-2); color: var(--sw-text); }
+/* Узлы группы — с отступом под иконку типа и тонкой линией-корешком. */
+.sw-tree-items {
+  margin: 1px 0 6px 15px;
+  padding-left: 8px;
+  border-left: 1px solid var(--sw-border);
+}
+.sw-tree-row { height: 28px; }
+.sw-tree-away {
+  max-width: 40%;
+  font-size: 11px;
+  color: var(--sw-text-mute);
+}
+.sw-tree-newtype {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 30px;
+  margin-top: 6px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  color: var(--sw-text-dim);
+  transition: background 0.14s var(--sw-ease), color 0.14s var(--sw-ease);
+}
+.sw-tree-newtype:hover { background: var(--sw-hover); color: var(--sw-text); }
+/* Фильтр по тегам: плотные пилюли, выбранная — акцентом. */
+.sw-tag-chip {
+  font-size: 11px;
+  line-height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid var(--sw-border);
+  color: var(--sw-text-dim);
+  transition: background 0.14s var(--sw-ease), color 0.14s var(--sw-ease), border-color 0.14s var(--sw-ease);
+}
+.sw-tag-chip:hover { color: var(--sw-text); border-color: var(--sw-border-strong); }
+.sw-tag-chip[data-on="true"] {
+  background: var(--sw-accent);
+  border-color: var(--sw-accent);
+  color: var(--sw-accent-fg);
+}
 
 /* Поле поиска: рамка появляется только на фокусе, и появляется тенью. */
 .sw-search {
@@ -853,7 +1928,11 @@ kbd {
 }
 
 /* Название прямо на карточке: правится по двойному клику. */
+/* Кегль и семейство приходят от .sw-node-title — здесь только «поле». Своего
+   font: inherit тут быть не может: правило идёт ниже .sw-node-title и сбросило
+   бы её размер обратно к унаследованному. */
 .sw-node-title-input {
+  flex: 1;
   width: 100%;
   min-width: 0;
   background: var(--sw-bg);
@@ -861,20 +1940,25 @@ kbd {
   border: 1px solid var(--sw-accent);
   border-radius: 6px;
   padding: 1px 6px;
-  font: inherit;
-  font-weight: 600;
   outline: none;
 }
 
-/* Описание на карточке: markdown, обрезанный ровно по трём строкам —
-   ограничение по строкам, а не по символам, выравнивает ряд карточек. */
+/* Описание на карточке. Обрезка — отдельным классом, а не здесь: развёрнутая
+   карточка показывает описание целиком, и когда предел высоты стоял на самом
+   .sw-node-md, разворачивать её было бессмысленно — текст всё равно обрывался
+   на трёх строках под градиентом. */
 .sw-node-md {
-  max-height: 54px;
   font-size: 12px;
   line-height: 1.45;
+}
+/* Вид «карточки»: три строки и многоточие — дальше открывают панель. Резали
+   высотой под градиентом, и высота не совпадала с шагом строк: третья строка
+   выходила срезанной наполовину и таяла, будто карточку недорисовали. */
+.sw-node-md-clip {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
 }
 
 /* Ползунок, который переезжает к активному полю в редакторе узла. */
@@ -958,7 +2042,8 @@ kbd {
 .sw-md > *:last-child { margin-bottom: 0; }
 .sw-md p { margin: 0 0 0.6em; }
 .sw-md h1, .sw-md h2, .sw-md h3, .sw-md h4, .sw-md h5, .sw-md h6 {
-  font-family: 'Playfair Display Variable', serif; font-weight: 600; line-height: 1.2; margin: 0.8em 0 0.4em;
+  font-family: var(--sw-font-display); font-weight: 600; letter-spacing: -0.02em;
+  line-height: 1.2; margin: 0.8em 0 0.4em;
 }
 .sw-md h1 { font-size: 1.4em; }
 .sw-md h2 { font-size: 1.2em; }
@@ -992,57 +2077,236 @@ kbd {
 .sw-md input[type="checkbox"] { margin-right: 0.4em; accent-color: var(--sw-accent); }
 .sw-md li > p { margin: 0; }
 
-/* Тот же markdown, но ужатый до размеров карточки на холсте: заголовки не
-   раздувают строку, отступы вдвое меньше, картинки не тянут карточку вниз. */
-.sw-md-compact { color: var(--sw-text-dim); }
-.sw-md-compact p, .sw-md-compact ul, .sw-md-compact ol, .sw-md-compact pre { margin: 0 0 0.35em; }
-.sw-md-compact h1, .sw-md-compact h2, .sw-md-compact h3 {
-  margin: 0.2em 0 0.2em;
+/* ---------------- разметка внутри карточки ----------------
+   Это не «тот же markdown, только мельче». Двести шестьдесят пикселей ширины —
+   другой носитель, и правила у него свои.
+
+   1. Никакой иерархии кеглей. Заголовок в куске текста на четыреста знаков
+      ничего не возглавляет: делить там нечего. Все шесть уровней выглядят
+      одинаково — как метка раздела: тот же кегль, что у текста, но плотнее,
+      ярче и с разрядкой. Ступенька размеров в карточке читалась как сломанная
+      вёрстка, потому что заголовок был вдвое крупнее двух строк под ним.
+   2. Ничего не уезжает вбок. Ни одной горизонтальной прокрутки: полоса внутри
+      карточки не только уродлива — она ещё и забирает у холста колесо мыши.
+      Длинные слова, ссылки и код переносятся, таблица подрезается.
+   3. Рамок нет. Таблица на такой ширине — это пары «ключ — значение»,
+      а не сетка: границы съедали бы половину места на сами линии. */
+.sw-md-compact {
+  color: var(--sw-text-dim);
+  /* Ссылка или путь без пробелов не должны распирать карточку. */
+  overflow-wrap: anywhere;
+}
+.sw-md-compact > *:last-child { margin-bottom: 0; }
+.sw-md-compact p, .sw-md-compact ul, .sw-md-compact ol, .sw-md-compact pre,
+.sw-md-compact table { margin: 0 0 0.4em; }
+.sw-md-compact h1, .sw-md-compact h2, .sw-md-compact h3,
+.sw-md-compact h4, .sw-md-compact h5, .sw-md-compact h6 {
+  margin: 0.55em 0 0.2em;
   font-family: var(--sw-font);
-  font-size: 1.02em;
+  font-size: 1em;
+  line-height: 1.35;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  text-transform: none;
   color: var(--sw-text);
 }
+.sw-md-compact > :first-child { margin-top: 0; }
 .sw-md-compact ul, .sw-md-compact ol { padding-left: 1.05em; }
 .sw-md-compact li { margin: 0; }
-.sw-md-compact blockquote { margin: 0.25em 0; padding-left: 0.6em; }
-.sw-md-compact pre { padding: 0.35em 0.5em; font-size: 0.95em; }
-.sw-md-compact hr { margin: 0.4em 0; }
+.sw-md-compact li::marker { color: var(--sw-text-mute); }
+.sw-md-compact blockquote {
+  margin: 0.3em 0;
+  padding-left: 0.6em;
+  border-left-width: 1px;
+  border-left-color: color-mix(in srgb, var(--sw-accent) 55%, transparent);
+}
+/* Код переносится, а не уезжает: полоса прокрутки внутри карточки крадёт
+   у холста колесо мыши. */
+.sw-md-compact pre {
+  padding: 0.35em 0.5em;
+  font-size: 0.95em;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.sw-md-compact code { padding: 0 0.25em; background: color-mix(in srgb, var(--sw-bg) 70%, transparent); }
+.sw-md-compact hr { margin: 0.5em 0; border-top-color: color-mix(in srgb, var(--sw-border) 70%, transparent); }
 .sw-md-compact img { display: none; }
-.sw-md-compact table { font-size: 0.95em; }
-.sw-md-compact th, .sw-md-compact td { padding: 0.1em 0.35em; }
+/* Таблица без сетки: строки в два столбца, разделённые воздухом и волоском. */
+.sw-md-compact table { width: 100%; table-layout: fixed; font-size: 0.95em; }
+.sw-md-compact th, .sw-md-compact td {
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--sw-border) 45%, transparent);
+  padding: 0.12em 0.3em 0.12em 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sw-md-compact th { color: var(--sw-text-mute); font-weight: 600; }
+.sw-md-compact tr:last-child td { border-bottom: none; }
+.sw-md-compact input[type="checkbox"] { width: 0.85em; height: 0.85em; margin-right: 0.3em; }
+/* Сноска: номер поднят и притушен, расшифровка внизу — отдельным блоком
+   в полтона, как и положено сноске. */
+.sw-md-compact .sw-md-fn { font-size: 0.78em; vertical-align: super; line-height: 0; color: var(--sw-accent); }
+.sw-md-compact .sw-md-fndef { font-size: 0.92em; color: var(--sw-text-mute); margin: 0.15em 0 0; }
+.sw-md .sw-md-fn { font-size: 0.75em; vertical-align: super; line-height: 0; color: var(--sw-accent); }
+.sw-md .sw-md-fndef { font-size: 0.92em; color: var(--sw-text-dim); margin: 0.2em 0 0; }
 
 /* Просмотр описания в правой панели — читаемая колонка, а не сплошняк. */
 .sw-md-doc { font-size: 13px; line-height: 1.68; }
 .sw-md-doc p { margin: 0 0 0.75em; }
 
-/* Живой редактор описания: текст всё время набран, правится только тот блок,
-   в котором стоит курсор. Отступы у блока и у поля правки совпадают до
-   пикселя — иначе на каждый клик документ дёргался бы. */
-.sw-mde { display: flex; flex-direction: column; }
-.sw-mde-block,
-.sw-mde-input {
-  padding: 0.15em 0.4em;
-  margin: 0 -0.4em;
-  border-radius: 6px;
-  border-left: 2px solid transparent;
+/* ---------------- блокнот: документ ----------------
+   Собранный текст, в котором правится один блок. Правило здесь одно и оно
+   важнее остальных: собранный блок и поле ввода на его месте должны занимать
+   одинаковое место. Разойдись они в кегле, отступах или межстрочном — документ
+   дёргался бы на каждый щелчок по абзацу. Поэтому всё, что задаёт раскладку,
+   объявлено обоим сразу. */
+.sw-mde-doc {
+  display: flex;
+  flex-direction: column;
+  min-height: 4rem;
+  padding: 0.15em 0;
+  cursor: text;
 }
-.sw-mde-block { cursor: text; }
-.sw-mde-block:hover { background: color-mix(in srgb, var(--sw-text) 4%, transparent); }
-.sw-mde-block .sw-md > *:last-child { margin-bottom: 0; }
-/* Пустой абзац между блоками — место, куда можно ткнуть и начать писать. */
-.sw-mde-empty { min-height: 1.1em; }
-.sw-mde-input {
-  border-left-color: var(--sw-accent);
-  background: color-mix(in srgb, var(--sw-accent) 7%, transparent);
+.sw-mde-block, .sw-mde-edit {
+  font-size: 13px;
+  line-height: 1.68;
+  padding: 1px 2px;
+  margin: 0;
+  border-radius: 4px;
+}
+/* Блок под курсором чуть выделяется фоном — видно, что по нему можно ткнуть. */
+.sw-mde-block:hover { background: color-mix(in srgb, var(--sw-hover) 60%, transparent); }
+.sw-mde-block > *:last-child { margin-bottom: 0; }
+.sw-mde-block.is-blank { opacity: 0.4; }
+.sw-mde-edit {
+  width: 100%;
+  resize: none;
+  overflow: hidden;
+  border: none;
+  background: color-mix(in srgb, var(--sw-accent) 5%, transparent);
+  color: var(--sw-text);
+  font-family: var(--sw-font);
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.sw-mde-edit::selection { background: color-mix(in srgb, var(--sw-accent) 32%, transparent); }
+/* Заголовок правится своим кеглем — иначе строка прыгала бы под курсором. */
+.sw-mde-edit.sw-mde-h {
+  font-family: var(--sw-font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.sw-mde-edit.sw-mde-h1 { font-size: 1.4em; }
+.sw-mde-edit.sw-mde-h2 { font-size: 1.2em; }
+.sw-mde-edit.sw-mde-h3 { font-size: 1.05em; }
+.sw-mde-edit.sw-mde-h4 { font-size: 0.98em; font-family: var(--sw-font); }
+.sw-mde-edit.sw-mde-h5 { font-size: 0.92em; font-family: var(--sw-font); }
+.sw-mde-edit.sw-mde-h6 { font-size: 0.85em; font-family: var(--sw-font); }
+.sw-mde-edit.sw-mde-q { color: var(--sw-text-dim); }
+.sw-mde-edit.sw-mde-pre { font-family: 'JetBrains Mono Variable', monospace; font-size: 0.9em; }
+.sw-mde-placeholder {
+  font-size: 13px;
+  line-height: 1.68;
+  padding: 1px 2px;
+  margin: 0;
+  color: var(--sw-text-mute);
+  cursor: text;
+}
+/* Крупный блокнот на весь экран: тот же документ, но кегль читательский. */
+.sw-mde-lg .sw-mde-block, .sw-mde-lg .sw-mde-edit, .sw-mde-lg .sw-mde-placeholder {
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+/* ---------------- блокнот ----------------
+   Поле ввода и подсветка разметки — два слоя, лежащие точно друг на друге:
+   текст виден из нижнего, набирается в верхнем. Всё, что влияет на раскладку
+   строк, живёт в одном классе на оба слоя. Разойдись они хоть на полпикселя —
+   курсор встанет мимо буквы, поэтому здесь не должно быть ни одного свойства
+   типографики, заданного только одному из них. */
+.sw-mde { display: flex; flex-direction: column; min-height: 0; }
+.sw-mde-type {
+  font-family: 'JetBrains Mono Variable', monospace;
   font-size: 12.5px;
-  line-height: 1.7;
+  line-height: 1.75;
+  letter-spacing: 0;
+  tab-size: 2;
+  padding: 0.3em 0.45em;
+  border: 0;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+/* Отрицательное поле гасит собственный отступ текста: строки стоят по краю
+   контейнера, а подсветка фокуса всё же заходит чуть шире их. */
+.sw-mde-stack, .sw-mde-preview { margin: 0 -0.45em; }
+.sw-mde-stack {
+  position: relative;
+  /* 1 0 auto, а не 1: с базой 0 блок принял бы высоту контейнера, а текст
+     длиннее экрана вылез бы из-под поля ввода — курсор ниже сгиба оказался бы
+     уже вне его. Здесь блок не короче содержимого и растягивается до низа. */
+  flex: 1 0 auto;
+  min-height: 5rem;
+  border-radius: 6px;
+  cursor: text;
+}
+/* Нижний слой: он же задаёт высоту всего блока. Запас снизу — не украшение:
+   высоту поля ввода задаёт этот слой, и без запаса поле оказалось бы вровень
+   со своим текстом, а браузер прокручивал бы его внутри себя, разводя слои.
+   Верхний отступ трогать нельзя — от него отсчитываются строки. */
+.sw-mde-hl {
+  min-height: 100%;
+  padding-bottom: 1.6em;
+  pointer-events: none;
   color: var(--sw-text);
 }
+/* Верхний слой. Текст в нём прозрачен — видно тот, что под ним, — а курсор и
+   выделение свои. Растянут по всему блоку, а не по своему содержимому: щелчок
+   под последней строкой ставит курсор в конец, как в блокноте. */
+.sw-mde-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  resize: none;
+  overflow: hidden;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--sw-text);
+}
 .sw-mde-input::placeholder { color: var(--sw-text-dim); }
-/* Хвост под текстом: клик по пустоте добавляет абзац, как в блокноте. */
-.sw-mde-tail { flex: 1; min-height: 2.5rem; cursor: text; }
+.sw-mde-input::selection { background: color-mix(in srgb, var(--sw-accent) 32%, transparent); }
+/* Едва заметный тон под текстом, пока он в руках. */
+.sw-mde-stack:focus-within { background: color-mix(in srgb, var(--sw-accent) 4%, transparent); }
+/* Режим чтения: собранный markdown со ссылками на узлы. */
+.sw-mde-preview { flex: 1 0 auto; padding: 0.3em 0.45em; cursor: text; }
+.sw-mde-preview .sw-md > *:last-child { margin-bottom: 0; }
+
+/* Разметка не прячется, а гаснет: спрятать знак — значит сдвинуть текст
+   относительно поля ввода, и курсор встанет не туда, куда его поставили.
+   По той же причине здесь нет ни одного правила, меняющего кегль: ширина
+   знака в моноширинном шрифте одна на все начертания, а на других размерах
+   строки разъедутся. */
+.sw-hl-mark { opacity: 0.4; }
+.sw-hl-head { font-weight: 700; color: var(--sw-text); }
+.sw-hl-strong { font-weight: 700; }
+.sw-hl-em { font-style: italic; }
+.sw-hl-del { text-decoration: line-through; opacity: 0.75; }
+.sw-hl-code, .sw-hl-fence {
+  color: var(--sw-accent);
+  background: color-mix(in srgb, var(--sw-accent) 9%, transparent);
+  border-radius: 3px;
+}
+.sw-hl-quote { color: var(--sw-text-dim); font-style: italic; }
+.sw-hl-bullet { color: var(--sw-accent); }
+.sw-hl-wiki { color: var(--sw-accent); text-decoration: underline; text-underline-offset: 2px; }
+.sw-hl-table { color: var(--sw-text-dim); }
 
 /* На весь экран текст крупнее: там его читают, а не проглядывают краем глаза. */
 .sw-mde-lg .sw-md-doc { font-size: 15px; line-height: 1.8; }
-.sw-mde-lg .sw-mde-input { font-size: 14px; line-height: 1.8; }
-.sw-mde-lg .sw-mde-block, .sw-mde-lg .sw-mde-input { padding: 0.2em 0.5em; margin: 0 -0.5em; }
+.sw-mde-lg .sw-mde-type { font-size: 14px; line-height: 1.85; padding: 0.35em 0.6em; }
+.sw-mde-lg .sw-mde-stack, .sw-mde-lg .sw-mde-preview { margin: 0 -0.6em; }

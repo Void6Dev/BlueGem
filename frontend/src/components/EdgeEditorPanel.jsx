@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { X, Trash2, Save, Link2, ArrowRight, ArrowLeftRight, MousePointerClick } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { Button } from "@/components/ui/button";
-import { REL_TYPES, DEFAULT_EDGE_COLOR } from "@/lib/settings";
+import { DEFAULT_EDGE_COLOR } from "@/lib/settings";
 import { useT } from "@/lib/i18n";
 
-export default function EdgeEditorPanel({ edge, nodeTitles = {}, onClose, onSave, onDelete, onOpenNode }) {
+export default function EdgeEditorPanel({ edge, nodeTitles = {}, relTypes = [], onClose, onSave, onDelete, onOpenNode }) {
   const t = useT();
   const [draft, setDraft] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -29,16 +29,19 @@ export default function EdgeEditorPanel({ edge, nodeTitles = {}, onClose, onSave
   const swap = () => setDraft((d) => ({ ...d, source: d.target, target: d.source }));
   const activeColor = draft.color || DEFAULT_EDGE_COLOR;
   const title = (id) => nodeTitles[id] || t("edge.node");
-  // Внутри REL_TYPES параметр назван rel, чтобы не затенять функцию перевода.
-  const currentType = REL_TYPES.find((rel) => rel.id === (draft.relType || "")) || REL_TYPES[0];
+  // Параметр назван rel, чтобы не затенять функцию перевода.
+  // Тип, удалённый из набора проекта, не должен обнулять панель — показываем
+  // «обычную», а само значение у связи остаётся нетронутым.
+  const currentType = relTypes.find((rel) => rel.id === (draft.relType || ""))
+    || { id: "", label: t("relTypes.plain"), color: DEFAULT_EDGE_COLOR };
 
   return (
     <motion.div
-      initial={{ x: "100%" }}
-      animate={{ x: 0 }}
+      initial={{ opacity: 0, x: 12 }}
+      animate={{ opacity: 1, x: 0 }}
 
-      transition={{ type: "tween", duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-      className="absolute top-0 right-0 h-full w-full sm:w-[26rem] border-l sw-panel sw-border-c z-20 flex flex-col"
+      transition={{ type: "tween", duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+      className="sw-dock h-full w-[26rem] shrink-0 border-l sw-panel sw-border-c z-20 flex flex-col"
       data-testid="edge-editor-panel"
     >
       <div className="flex items-center justify-between px-6 py-5 border-b sw-border-c">
@@ -80,7 +83,7 @@ export default function EdgeEditorPanel({ edge, nodeTitles = {}, onClose, onSave
             style={{ borderColor: `${currentType.color}66`, background: `${currentType.color}14` }}
           >
             <span className="w-3 h-3 rounded-full shrink-0" style={{ background: currentType.color }} />
-            <span className="text-sm flex-1 truncate">{t(currentType.labelKey)}</span>
+            <span className="text-sm flex-1 truncate">{currentType.label}</span>
             <MousePointerClick className="w-3.5 h-3.5 sw-text-dim shrink-0" />
           </div>
           <p className="mt-1.5 text-[11px] sw-text-dim">
@@ -90,9 +93,11 @@ export default function EdgeEditorPanel({ edge, nodeTitles = {}, onClose, onSave
 
         <div>
           <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{t("edge.label")}</label>
-          <Input
+          <AutoTextarea
             data-testid="edge-label-input"
             value={draft.label}
+            singleLine
+            maxRows={4}
             onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
             placeholder={t("edge.labelPlaceholder")}
             className="mt-2 bg-transparent sw-border-c"
@@ -135,7 +140,7 @@ export default function EdgeEditorPanel({ edge, nodeTitles = {}, onClose, onSave
                 label: draft.label, relType: draft.relType, color: draft.color,
                 source: draft.source, target: draft.target,
               })}
-              className="flex-1 sw-accent-bg text-white border-0 hover:opacity-90 gap-2"
+              className="flex-1 sw-accent-bg sw-accent-fg border-0 hover:opacity-90 gap-2"
             >
               <Save className="w-4 h-4" /> {t("common.save")}
             </Button>

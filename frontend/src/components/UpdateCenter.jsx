@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import {
   ArrowDownToLine, Check, MessageSquare, RefreshCw, RotateCcw, ExternalLink, X,
 } from "lucide-react";
-import { updates, sendFeedback, openExternal, appVersion } from "@/lib/desktop";
+import { updates, sendFeedback, openFeedbackIssue, openExternal, appVersion } from "@/lib/desktop";
 import MarkdownView from "@/components/MarkdownView";
 import { useT, getLanguage } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -48,12 +48,18 @@ export default function UpdateCenter() {
   const [fbTitle, setFbTitle] = useState("");
   const [fbBody, setFbBody] = useState("");
   const [fbKind, setFbKind] = useState("feedback");
+  const [fbEmail, setFbEmail] = useState("");
+  const [fbSending, setFbSending] = useState(false);
+  const [fbFailed, setFbFailed] = useState(false); // письмо не ушло — предлагаем GitHub
 
   // Проверку делает оболочка один раз за запуск; здесь мы лишь забираем её
   // результат — check() без force отдаёт кэш и не ходит в сеть.
   useEffect(() => {
     if (!updates.supported) return undefined;
     let alive = true;
+    // Здесь молчание намеренное: это фоновая проверка обновлений при запуске,
+    // и жаловаться на отсутствие сети посреди работы незачем — состояние
+    // кнопки останется прежним, а «проверить» рядом сообщит об ошибке вслух.
     updates.check().then((s) => { if (alive) setState(s); }).catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -97,15 +103,45 @@ export default function UpdateCenter() {
     }
   }, [t]);
 
-  const submitFeedback = useCallback(async () => {
-    if (!fbTitle.trim()) return toast.error(t("update.feedbackTitleRequired"));
-    await sendFeedback({ title: fbTitle.trim(), body: fbBody.trim(), kind: fbKind });
+  const closeFeedback = useCallback(() => {
     setFeedbackOpen(false);
     setFbTitle("");
     setFbBody("");
-    toast.success(t("update.feedbackOpened"));
+    setFbFailed(false);
+  }, []);
+
+  const submitFeedback = useCallback(async () => {
+    if (!fbTitle.trim()) return toast.error(t("update.feedbackTitleRequired"));
+    setFbSending(true);
+    try {
+      const res = await sendFeedback({
+        title: fbTitle.trim(), body: fbBody.trim(), kind: fbKind, email: fbEmail.trim(),
+      });
+      if (res.ok) {
+        closeFeedback();
+        toast.success(t("update.feedbackSent"));
+        return undefined;
+      }
+      // Слишком частая отправка — не сбой: запасной путь предлагать незачем.
+      if (res.error === "too-often") {
+        toast.message(t("update.feedbackTooOften"));
+        return undefined;
+      }
+      // Форму не закрываем: написанное не должно пропасть из-за сбоя сети.
+      setFbFailed(true);
+      toast.error(t("update.feedbackFailed"));
+    } finally {
+      setFbSending(false);
+    }
     return undefined;
-  }, [fbTitle, fbBody, fbKind, t]);
+  }, [fbTitle, fbBody, fbKind, fbEmail, closeFeedback, t]);
+
+  /** Запасной путь после неудачной отправки — issue с тем же текстом. */
+  const feedbackViaGithub = useCallback(async () => {
+    await openFeedbackIssue({ title: fbTitle.trim(), body: fbBody.trim(), kind: fbKind });
+    closeFeedback();
+    toast.message(t("update.feedbackOpened"));
+  }, [fbTitle, fbBody, fbKind, closeFeedback, t]);
 
   const current = state?.current || appVersion;
   const latest = state?.latest || null;
@@ -247,9 +283,9 @@ export default function UpdateCenter() {
         </DialogContent>
       </Dialog>
 
-      {/* Фидбек: своего сервера нет, поэтому текст уезжает в новый issue —
-          ответ автора приходит туда же, а не теряется в почте. */}
-      <Dialog open={feedbackOpen} onOpenChange={setFeedbackOpen}>
+      {/* Фидбек уходит письмом автору прямо отсюда — без GitHub и аккаунта.
+          Если письмо не ушло, форма остаётся открытой и предлагает issue. */}
+      <Dialog open={feedbackOpen} onOpenChange={(v) => (v ? setFeedbackOpen(true) : closeFeedback())}>
         <DialogContent className="sm:max-w-md" data-testid="feedback-dialog">
           <DialogHeader>
             <DialogTitle>{t("update.feedbackTitle")}</DialogTitle>
@@ -289,14 +325,48 @@ export default function UpdateCenter() {
             placeholder={t("update.feedbackBodyPlaceholder")}
             className="bg-transparent sw-border-c resize-none text-sm"
           />
+          {/* Адрес нужен только для ответа — без него отзыв всё равно дойдёт. */}
+          <Input
+            data-testid="feedback-email"
+            type="email"
+            value={fbEmail}
+            onChange={(e) => setFbEmail(e.target.value)}
+            placeholder={t("update.feedbackEmailPlaceholder")}
+            className="bg-transparent sw-border-c"
+          />
           <p className="sw-t-meta sw-text-dim">{t("update.feedbackFooter", { version: current })}</p>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setFeedbackOpen(false)} className="gap-2 sw-text-dim">
+
+          {fbFailed && (
+            <p className="sw-t-meta" style={{ color: "var(--sw-warn)" }} data-testid="feedback-failed">
+              {t("update.feedbackFailedHint")}
+            </p>
+          )}
+
+          <DialogFooter className="sm:justify-between gap-2">
+            <Button variant="ghost" onClick={closeFeedback} className="gap-2 sw-text-dim">
               <X className="w-4 h-4" /> {t("common.cancel")}
             </Button>
-            <Button data-testid="feedback-send" onClick={submitFeedback} className="gap-2 sw-accent-bg text-white border-0">
-              <MessageSquare className="w-4 h-4" /> {t("update.feedbackSend")}
-            </Button>
+            <div className="flex items-center gap-2">
+              {fbFailed && (
+                <Button
+                  data-testid="feedback-github"
+                  variant="ghost"
+                  onClick={feedbackViaGithub}
+                  className="gap-2 sw-text-dim"
+                >
+                  <ExternalLink className="w-4 h-4" /> GitHub
+                </Button>
+              )}
+              <Button
+                data-testid="feedback-send"
+                onClick={submitFeedback}
+                disabled={fbSending}
+                className="gap-2 sw-accent-bg sw-accent-fg border-0"
+              >
+                <MessageSquare className={`w-4 h-4 ${fbSending ? "animate-pulse" : ""}`} />
+                {fbSending ? t("update.feedbackSending") : t("update.feedbackSend")}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

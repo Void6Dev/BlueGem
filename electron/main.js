@@ -23,6 +23,7 @@ const { WindowState, MIN } = require("./window-state");
 const { buildMenu } = require("./menu");
 const i18n = require("./i18n");
 const updater = require("./update");
+const feedback = require("./feedback");
 
 const APP_ID = "com.bluegem.app";
 const PROJECT_ROOT = path.join(__dirname, "..");
@@ -187,7 +188,7 @@ function createWindow() {
     minWidth: MIN.width,
     minHeight: MIN.height,
     show: false,
-    backgroundColor: "#0A0A0A", // тёмная тема по умолчанию — без белой вспышки
+    backgroundColor: "#0A0A0F", // тёмная тема по умолчанию — без белой вспышки
     title: "BlueGem",
     icon: path.join(PROJECT_ROOT, "build", "icon.ico"),
     autoHideMenuBar: false,
@@ -441,7 +442,21 @@ function registerIpc(dataDir) {
     });
   });
 
-  ipcMain.handle("bg:feedback", (_e, options = {}) => {
+  // Отзыв уходит письмом. Ссылку на issue отдаём вместе с ошибкой: интерфейс
+  // предложит запасной путь, не заставляя набирать текст заново.
+  ipcMain.handle("bg:feedback", async (_e, options = {}) => {
+    const payload = {
+      title: String(options.title || ""),
+      body: String(options.body || ""),
+      kind: options.kind === "bug" ? "bug" : "feedback",
+      email: String(options.email || ""),
+    };
+    const res = await feedback.send(payload);
+    if (res.ok) return res;
+    return { ...res, url: updater.feedbackUrl(payload) };
+  });
+
+  ipcMain.handle("bg:feedback-url", (_e, options = {}) => {
     const url = updater.feedbackUrl({
       title: String(options.title || ""),
       body: String(options.body || ""),

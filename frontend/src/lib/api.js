@@ -46,6 +46,8 @@ export const api = {
   // lang уходит на сервер: типы узлов и первый холст нового проекта заводятся
   // на языке интерфейса. Дальше это уже данные проекта и сами не переводятся.
   createProject: (data) => client.post("/projects", { lang: getLanguage(), ...data }).then((r) => r.data),
+  // Что заводит каждый шаблон: типы узлов и страницы — уже на языке интерфейса.
+  listTemplates: () => client.get("/templates", { params: { lang: getLanguage() } }).then((r) => r.data),
   getProject: (id) => client.get(`/projects/${id}`).then((r) => r.data),
   updateProject: (id, data) => client.put(`/projects/${id}`, data).then((r) => r.data),
   deleteProject: (id) => client.delete(`/projects/${id}`).then((r) => r.data),

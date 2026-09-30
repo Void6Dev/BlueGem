@@ -1,10 +1,13 @@
 import "@/App.css";
-import { Component, useEffect } from "react";
+import { Component, lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Toaster } from "sonner";
-import Dashboard from "@/pages/Dashboard";
-import Editor from "@/pages/Editor";
+// Две страницы — два куска сборки. Список проектов и редактор не нужны
+// одновременно ни разу за сеанс, а вместе они тянут за собой всё: React Flow,
+// анимации, разбор markdown. Первый экран должен стоить только себя.
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const Editor = lazy(() => import("@/pages/Editor"));
 import { isDesktop, onLanguage, onMenuCommand, onOpenProject, takePendingProject } from "@/lib/desktop";
 import { openProjectText } from "@/lib/openProject";
 import { setLanguage, t, useT } from "@/lib/i18n";
@@ -25,7 +28,7 @@ class ErrorBoundary extends Component {
     return (
       <div className="min-h-screen sw-bg flex items-center justify-center px-6">
         <div className="max-w-md text-center">
-          <h1 className="font-serif-title text-3xl mb-3">{t("app.crashTitle")}</h1>
+          <h1 className="sw-display text-3xl mb-3">{t("app.crashTitle")}</h1>
           <p className="sw-text-dim text-sm mb-5">
             {t("app.crashText")}
           </p>
@@ -34,7 +37,7 @@ class ErrorBoundary extends Component {
           </pre>
           <button
             onClick={() => window.location.assign("/")}
-            className="px-4 py-2 rounded-full sw-accent-bg text-white text-sm"
+            className="px-4 py-2 rounded-full sw-accent-bg sw-accent-fg text-sm"
           >
             {t("app.toProjects")}
           </button>
@@ -92,7 +95,7 @@ function NotFound() {
   return (
     <div className="min-h-screen sw-bg flex items-center justify-center px-6 text-center">
       <div>
-        <p className="font-serif-title text-4xl mb-2">404</p>
+        <p className="sw-display text-4xl mb-2">404</p>
         <p className="sw-text-dim text-sm mb-5">{t("app.notFoundText")}</p>
         <Link to="/" className="sw-accent-text text-sm underline underline-offset-4">{t("palette.home")}</Link>
       </div>
@@ -101,16 +104,30 @@ function NotFound() {
 }
 
 function App() {
+  // Соседняя страница подтягивается в простое: переход «список → редактор»
+  // должен быть мгновенным, а не ждать загрузки куска.
+  useEffect(() => {
+    const warm = () => { import("@/pages/Dashboard"); import("@/pages/Editor"); };
+    const idle = window.requestIdleCallback;
+    if (!idle) { const t = setTimeout(warm, 1500); return () => clearTimeout(t); }
+    const handle = idle(warm, { timeout: 4000 });
+    return () => window.cancelIdleCallback?.(handle);
+  }, []);
+
   return (
     <div className="App">
       <ErrorBoundary>
         <BrowserRouter>
           <DesktopBridge />
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/project/:id" element={<Editor />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          {/* Заглушка пустая: у обеих страниц свой скелетон, а вспышка
+              «загрузка…» между ними была бы шумом на десятки миллисекунд. */}
+          <Suspense fallback={null}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/project/:id" element={<Editor />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </ErrorBoundary>
       {/* Colours come from --sw-* vars (see App.css), so toasts follow the theme. */}

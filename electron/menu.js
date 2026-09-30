@@ -19,7 +19,10 @@ function buildMenu(ctx) {
     {
       label: t("menu.file"),
       submenu: [
-        { label: t("menu.newProject"), accelerator: "CmdOrCtrl+N", click: () => ctx.send("new-project") },
+        // Ctrl+Shift+N, а не Ctrl+N: акселератор меню перехватывается в главном
+        // процессе раньше страницы, и обычный Ctrl+N не давал создать заметку
+        // на холсте — там он нужнее, чем новый проект.
+        { label: t("menu.newProject"), accelerator: "CmdOrCtrl+Shift+N", click: () => ctx.send("new-project") },
         { label: t("menu.openProject"), accelerator: "CmdOrCtrl+O", click: () => ctx.openProject() },
         { type: "separator" },
         { label: t("menu.dataFolder"), click: () => shell.openPath(ctx.dataDir) },

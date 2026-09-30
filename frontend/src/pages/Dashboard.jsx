@@ -4,8 +4,10 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
   Plus, BookOpen, Trash2, Network, ArrowRight, Search, Upload, Copy,
-  Pencil, Link2, Clock, SlidersHorizontal,
+  Pencil, Link2, Clock,
 } from "lucide-react";
+import { Segmented } from "@/components/ui/segmented";
+import CreateProjectDialog from "@/components/CreateProjectDialog";
 import { api, apiErrorMessage } from "@/lib/api";
 import { applyStoredAppearance } from "@/lib/settings";
 import { readJsonFile } from "@/lib/exporters";
@@ -49,8 +51,6 @@ export default function Dashboard() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [desc, setDesc] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [editTarget, setEditTarget] = useState(null);
   const [query, setQuery] = useState("");
@@ -81,16 +81,21 @@ export default function Dashboard() {
     }
   };
 
-  const create = async () => {
-    if (!name.trim()) return toast.error(t("dashboard.toasts.nameRequired"));
+  /** Возвращает true, если проект создан: диалог по этому признаку снимает
+   *  занятость с кнопки, а на ошибке остаётся открытым с введённым текстом. */
+  const create = async (payload) => {
+    if (!payload.name) {
+      toast.error(t("dashboard.toasts.nameRequired"));
+      return false;
+    }
     try {
-      const p = await api.createProject({ name: name.trim(), description: desc.trim() });
+      const p = await api.createProject(payload);
       setOpen(false);
-      setName("");
-      setDesc("");
       navigate(`/project/${p.id}`);
+      return true;
     } catch (e) {
       toast.error(apiErrorMessage(e, "errors.createProject"));
+      return false;
     }
   };
 
@@ -192,7 +197,7 @@ export default function Dashboard() {
         <div className="max-w-6xl mx-auto px-6 sm:px-8 py-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <img src={logo} alt="" className="w-9 h-9 rounded-lg" draggable={false} />
-            <span className="font-serif-title text-xl tracking-tight">BlueGem</span>
+            <span className="sw-display text-xl tracking-tight">BlueGem</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center rounded-full border sw-border-c overflow-hidden mr-1" data-testid="lang-switch">
@@ -205,7 +210,7 @@ export default function Dashboard() {
                   className="px-2.5 py-1 text-[11px] font-semibold tracking-wide transition-colors"
                   style={{
                     background: lang === option.id ? "var(--sw-accent)" : "transparent",
-                    color: lang === option.id ? "#fff" : "var(--sw-text-dim)",
+                    color: lang === option.id ? "var(--sw-accent-fg)" : "var(--sw-text-dim)",
                   }}
                 >
                   {option.short}
@@ -228,7 +233,7 @@ export default function Dashboard() {
             <Button
               data-testid="new-project-btn"
               onClick={() => setOpen(true)}
-              className="rounded-full sw-accent-bg text-white hover:opacity-90 transition-opacity gap-2 border-0"
+              className="rounded-full sw-accent-bg sw-accent-fg hover:opacity-90 transition-opacity gap-2 border-0"
             >
               <Plus className="w-4 h-4" /> {t("dashboard.newProject")}
             </Button>
@@ -239,7 +244,7 @@ export default function Dashboard() {
       {/* Hero */}
       <div className="max-w-6xl mx-auto px-6 sm:px-8 pt-16 pb-10">
         <p className="text-xs uppercase tracking-[0.3em] sw-text-dim mb-4">{t("dashboard.tagline")}</p>
-        <h1 className="font-serif-title text-4xl sm:text-5xl tracking-tight max-w-2xl leading-tight">
+        <h1 className="sw-display text-4xl sm:text-5xl tracking-tight max-w-2xl leading-tight">
           {t("dashboard.heroTitle")}
         </h1>
         <p className="sw-text-dim mt-4 max-w-xl leading-relaxed">
@@ -272,23 +277,15 @@ export default function Dashboard() {
                   className="pl-8 h-9 w-52 bg-transparent sw-border-c text-sm"
                 />
               </div>
-              <div className="flex items-center rounded-lg border sw-border-c overflow-hidden">
-                <SlidersHorizontal className="w-3.5 h-3.5 sw-text-dim mx-2 shrink-0" />
-                {SORT_IDS.map((id) => (
-                  <button
-                    key={id}
-                    data-testid={`sort-${id}`}
-                    onClick={() => setSort(id)}
-                    className="px-2.5 h-9 text-xs transition-colors"
-                    style={{
-                      background: sort === id ? "var(--sw-accent)" : "transparent",
-                      color: sort === id ? "#fff" : "var(--sw-text-dim)",
-                    }}
-                  >
-                    {t(`dashboard.sort.${id}`)}
-                  </button>
-                ))}
-              </div>
+              {/* Сортировка — тот же сегмент, что тема и вид карточек.
+                  Акцентная заливка здесь была бы третьим по яркости пятном
+                  рядом с «Новый проект», ради выбора порядка строк. */}
+              <Segmented
+                testIdPrefix="sort"
+                value={sort}
+                onChange={setSort}
+                options={SORT_IDS.map((id) => ({ id, label: t(`dashboard.sort.${id}`) }))}
+              />
             </div>
           )}
         </div>
@@ -320,7 +317,7 @@ export default function Dashboard() {
                 transition={{ delay: Math.min(i * 0.04, 0.3), duration: 0.35 }}
                 onClick={() => navigate(`/project/${p.id}`)}
                 data-testid={`project-card-${p.id}`}
-                className="group relative border sw-surface sw-border-c rounded-xl p-6 cursor-pointer hover:-translate-y-1 transition-all duration-200 hover:border-[var(--sw-accent)]"
+                className="group relative border sw-raised sw-border-c rounded-xl p-6 cursor-pointer hover:-translate-y-1 transition-all duration-200 hover:border-[var(--sw-accent)]"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="w-10 h-10 rounded-lg border sw-border-c flex items-center justify-center">
@@ -353,10 +350,24 @@ export default function Dashboard() {
                     </button>
                   </div>
                 </div>
-                <h3 className="font-serif-title text-xl tracking-tight mb-2 truncate">{p.name}</h3>
+                <h3 className="sw-display text-xl tracking-tight mb-2 truncate">{p.name}</h3>
                 <p className="sw-text-dim text-sm line-clamp-2 min-h-[2.5rem]">
                   {p.description || t("common.noDescription")}
                 </p>
+                {/* Состав проекта по типам узлов. Четыре пикселя говорят то,
+                    чего не скажет число «96 узлов»: это мир из персонажей или
+                    из мест. Пустой проект полоски не получает — рисовать нечего. */}
+                {p.typeMix?.length > 0 && (
+                  <div
+                    className="sw-type-mix"
+                    data-testid={`project-mix-${p.id}`}
+                    title={t("dashboard.typeMix", { count: p.nodeCount || 0 })}
+                  >
+                    {p.typeMix.map((m, i) => (
+                      <span key={`${m.color}-${i}`} style={{ flex: m.count, background: m.color }} />
+                    ))}
+                  </div>
+                )}
                 <div className="mt-4 flex items-center gap-3 text-[11px] font-mono-sw sw-text-dim">
                   <span className="flex items-center gap-1"><Network className="w-3 h-3" />{p.nodeCount || 0}</span>
                   <span className="flex items-center gap-1"><Link2 className="w-3 h-3" />{p.edgeCount || 0}</span>
@@ -371,58 +382,15 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Create dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sw-surface sw-border-c" data-testid="create-project-dialog">
-          <DialogHeader>
-            <DialogTitle className="font-serif-title text-2xl">{t("dashboard.newProject")}</DialogTitle>
-            <DialogDescription className="sw-text-dim">
-              {t("dashboard.newDialogText")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{t("common.name")}</label>
-              <Input
-                data-testid="project-name-input"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && create()}
-                placeholder={t("dashboard.namePlaceholder")}
-                className="mt-2 bg-transparent sw-border-c"
-                autoFocus
-              />
-            </div>
-            <div>
-              <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{t("common.description")}</label>
-              <Textarea
-                data-testid="project-desc-input"
-                value={desc}
-                onChange={(e) => setDesc(e.target.value)}
-                placeholder={t("dashboard.descPlaceholder")}
-                className="mt-2 bg-transparent sw-border-c resize-none"
-                rows={3}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
-            <Button
-              data-testid="create-project-submit"
-              onClick={create}
-              className="sw-accent-bg text-white border-0 hover:opacity-90"
-            >
-              {t("common.create")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Создание проекта: выбор заготовки живёт отдельным компонентом —
+          он вырос из пары полей в экран. */}
+      <CreateProjectDialog open={open} onOpenChange={setOpen} onCreate={create} />
 
       {/* Rename dialog */}
       <Dialog open={!!editTarget} onOpenChange={(v) => !v && setEditTarget(null)}>
         <DialogContent className="sw-surface sw-border-c" data-testid="edit-project-dialog">
           <DialogHeader>
-            <DialogTitle className="font-serif-title text-2xl">{t("dashboard.editTitle")}</DialogTitle>
+            <DialogTitle className="sw-display text-2xl">{t("dashboard.editTitle")}</DialogTitle>
             <DialogDescription className="sw-text-dim">{t("dashboard.editText")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -444,7 +412,7 @@ export default function Dashboard() {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditTarget(null)}>{t("common.cancel")}</Button>
-            <Button data-testid="save-project-edit" onClick={saveEdit} className="sw-accent-bg text-white border-0 hover:opacity-90">
+            <Button data-testid="save-project-edit" onClick={saveEdit} className="sw-accent-bg sw-accent-fg border-0 hover:opacity-90">
               {t("common.save")}
             </Button>
           </DialogFooter>
@@ -486,7 +454,7 @@ function EmptyState({ onCreate, onImport }) {
       <div className="w-14 h-14 rounded-lg border sw-border-c flex items-center justify-center mb-5">
         <Network className="w-7 h-7 sw-text-dim" />
       </div>
-      <h3 className="font-serif-title text-2xl tracking-tight mb-2">{t("dashboard.emptyTitle")}</h3>
+      <h3 className="sw-display text-2xl tracking-tight mb-2">{t("dashboard.emptyTitle")}</h3>
       <p className="sw-text-dim text-sm max-w-sm mb-6">
         {t("dashboard.emptyText")}
       </p>
@@ -494,7 +462,7 @@ function EmptyState({ onCreate, onImport }) {
         <Button
           data-testid="empty-create-btn"
           onClick={onCreate}
-          className="rounded-full sw-accent-bg text-white border-0 hover:opacity-90 gap-2"
+          className="rounded-full sw-accent-bg sw-accent-fg border-0 hover:opacity-90 gap-2"
         >
           <Plus className="w-4 h-4" /> {t("dashboard.createFirst")}
         </Button>

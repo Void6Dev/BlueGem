@@ -2,35 +2,54 @@ import { useMemo, useRef } from "react";
 import { resolveCalendar } from "./calendar";
 import { buildChronology } from "./resolve";
 
+// Поля узла, от которых зависит хронология и то, что показывает шкала:
+// сами даты, название (им подписана относительная дата), тип, теги и страница
+// (по ним шкала фильтрует и группирует). Описание и характеристики сюда не
+// входят намеренно — см. комментарий к useChronology.
+const WATCHED = ["dates", "title", "typeId", "tags", "canvas"];
+
 /**
  * Хронология проекта, пересчитанная ровно тогда, когда она изменилась.
  *
- * Тонкость вот в чём. Узлы приходят от React Flow, и он подменяет объект узла
- * на каждый кадр перетаскивания по холсту. Считать всю хронологию заново на
- * каждый такой кадр нельзя — тридцать тысяч событий разбираются полторы сотни
+ * Тонкость вот в чём. Содержимое узлов приходит из редактора, а он подменяет
+ * список на каждое движение по холсту. Считать всю хронологию заново на каждый
+ * такой кадр нельзя — тридцать тысяч событий разбираются полторы сотни
  * миллисекунд, и мышь встанет колом.
  *
- * Но React Flow подменяет только сам узел, оставляя `data` тем же объектом:
- * позиция меняется, содержимое — нет. Поэтому сравниваем ссылки на `data`, а
- * не узлы целиком. Перетаскивание проходит мимо, а любая правка узла —
- * замена `data` — пересчёт вызывает.
+ * Сравнивать объекты `data` целиком оказалось мало: правка в панели узла уходит
+ * на холст тем же кадром, то есть подменяет `data` на каждую набранную букву —
+ * и набор описания перестраивал всю хронологию по разу на символ. Поэтому
+ * сверяем не объект целиком, а те поля, от которых шкала и правда зависит
+ * (WATCHED). Описание и характеристики проходят мимо.
  *
- * @param {object[]} rfNodes узлы React Flow ({id, position, data})
+ * @param {object[]} nodeData содержимое узлов (те самые объекты `data`)
  * @param {object} settings  настройки проекта: календарь и эпохи
  */
-export function useChronology(rfNodes, settings) {
-  const cache = useRef({ refs: null, nodes: null });
+export function useChronology(nodeData, settings) {
+  const cache = useRef({ marks: null, nodes: null });
 
   const nodes = useMemo(() => {
-    const previous = cache.current.refs;
-    const same = previous
-      && previous.length === rfNodes.length
-      && rfNodes.every((n, i) => n.data === previous[i]);
+    const width = WATCHED.length;
+    const previous = cache.current.marks;
+    let same = previous && previous.length === nodeData.length * width;
+    for (let i = 0; same && i < nodeData.length; i += 1) {
+      const d = nodeData[i];
+      for (let k = 0; k < width; k += 1) {
+        if (previous[i * width + k] !== d[WATCHED[k]]) { same = false; break; }
+      }
+    }
     if (same) return cache.current.nodes;
-    const refs = rfNodes.map((n) => n.data);
-    cache.current = { refs, nodes: refs };
-    return refs;
-  }, [rfNodes]);
+
+    const marks = new Array(nodeData.length * width);
+    const list = new Array(nodeData.length);
+    for (let i = 0; i < nodeData.length; i += 1) {
+      const d = nodeData[i];
+      list[i] = d;
+      for (let k = 0; k < width; k += 1) marks[i * width + k] = d[WATCHED[k]];
+    }
+    cache.current = { marks, nodes: list };
+    return list;
+  }, [nodeData]);
 
   const calendar = useMemo(() => resolveCalendar(settings), [settings?.calendar]);
   const eras = settings?.eras;
