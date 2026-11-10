@@ -45,7 +45,12 @@ jobs:
           java-version: 21
           cache: gradle
 
+      # SDK на раннере уже стоит; действие принимает лицензии, чтобы Gradle
+      # мог сам докачать нужную платформу. Пакет «tools» по умолчанию из SDK
+      # давно убран, поэтому список задан явно.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Install frontend dependencies
         working-directory: frontend
