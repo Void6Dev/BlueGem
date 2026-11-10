@@ -38,7 +38,7 @@ import Sheet from "@/components/mobile/Sheet";
 import {
   CanvasSheet, CreateSheet, MobileDock, MobileTopBar, WorldSheet,
 } from "@/components/mobile/MobileEditorChrome";
-import { haptic, useBackHandler, useIsMobile } from "@/lib/platform";
+import { haptic, isMobileNow, useBackHandler, useIsMobile } from "@/lib/platform";
 import { useLongPress } from "@/lib/useLongPress";
 
 /* Панели и оверлеи — отдельными кусками сборки.
@@ -66,6 +66,8 @@ function warmPanels() {
   import("@/components/SettingsPanel");
   import("@/components/ShortcutsDialog");
   import("@/components/timeline/TimelinePanel");
+  // Редактор описания с живым оформлением нужен только на компьютере.
+  if (!isMobileNow()) import("@/components/MarkdownEditor");
 }
 
 /**
@@ -2917,10 +2919,12 @@ function EditorInner() {
           // читает сам счётчик (см. ZoomPercent), а вид запоминается по
           // остановке. Раньше onMove дёргал состояние редактора на каждый
           // щелчок колеса — и вместе с ним пересобирались все карточки.
-          onMove={(_, vp) => { viewRef.current = vp; markMoving(); }}
+          // На телефоне класс «едет» не нужен — облегчённый вид там всегда, а
+          // каждое его включение и выключение пересчитывало стили всех карточек.
+          onMove={(_, vp) => { viewRef.current = vp; if (!mobile) markMoving(); }}
           // Перенос карточки — то же движение: под ней перерисовывается всё,
           // над чем она проезжает, вместе с её тенью и бликом.
-          onNodeDrag={markMoving}
+          onNodeDrag={mobile ? undefined : markMoving}
           onMoveEnd={(_, vp) => writeView(id, vp)}
           // Холст поехал — меню больше не относится к тому, что под ним.
           onMoveStart={() => setMenu(null)}
@@ -2955,7 +2959,9 @@ function EditorInner() {
           data-testid="react-flow-canvas"
         >
           <FarZoomFlag targetRef={paneRef} />
-          {settings.showGrid && <CanvasGrid lite={mobile} />}
+          {/* Сетку React Flow перерисовывает на каждый кадр движения холста —
+              на телефоне это самая дорогая часть панорамирования. */}
+          {settings.showGrid && !mobile && <CanvasGrid />}
           {!mobile && settings.showMiniMap !== false && (
             <MiniMap
               pannable

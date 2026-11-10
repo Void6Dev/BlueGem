@@ -817,3 +817,134 @@
    должен видеть, что нажатие принято. */
 .sw-is-mobile .sw-preview-edit:active,
 .sw-is-mobile .sw-preview-act:active { transform: scale(0.95); }
+
+/* ---------------- описание на телефоне ---------------- */
+
+/* Собранный текст в панели узла: читается как документ, касание — писать. */
+.sw-mdesc {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 96px;
+  padding: 14px 44px 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--sw-border);
+  background: color-mix(in srgb, var(--sw-bg) 55%, transparent);
+  text-align: left;
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: var(--sw-text);
+}
+.sw-mdesc:active { background: var(--sw-hover); }
+.sw-mdesc-empty { color: var(--sw-text-mute); }
+.sw-mdesc-pen {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--sw-surface-2);
+  color: var(--sw-text-dim);
+}
+
+/* Лист для письма: поле во весь экран, кнопки — последней строкой. Шторка
+   ужимается вместе с экраном, когда выезжает клавиатура, поэтому строка
+   кнопок сама оказывается прямо над ней — без position: fixed. */
+.sw-writer { padding-bottom: 0; }
+.sw-writer-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+  font-size: 14.5px;
+  font-weight: 700;
+}
+.sw-writer-done:active { transform: scale(0.95); }
+.sw-writer-input {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  padding: 4px 20px 24px;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--sw-text);
+  font-family: var(--sw-font);
+  font-size: 17px !important;
+  line-height: 1.65;
+  caret-color: var(--sw-accent);
+  overscroll-behavior: contain;
+}
+.sw-writer-input::placeholder { color: var(--sw-text-mute); }
+.sw-writer-nodes {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-top: 1px solid var(--sw-border);
+  background: var(--sw-surface);
+}
+.sw-writer-nodes::-webkit-scrollbar { display: none; }
+.sw-writer-nodes > button {
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sw-accent) 15%, var(--sw-surface-2));
+  color: var(--sw-text);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sw-writer-bar {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 6px calc(8px + var(--sw-safe-right)) calc(6px + var(--sw-safe-bottom)) calc(8px + var(--sw-safe-left));
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--sw-surface-2);
+  border-top: 1px solid var(--sw-border);
+}
+.sw-writer-bar::-webkit-scrollbar { display: none; }
+/* Клавиатура открыта — нижнего системного отступа под кнопками не нужно. */
+.sw-keyboard .sw-writer-bar { padding-bottom: 6px; }
+
+/* Старые WebView не знают dvh — для них та же высота в vh. */
+.sw-sheet { max-height: calc(100vh - var(--sw-safe-top) - 10px); max-height: calc(100dvh - var(--sw-safe-top) - 10px); }
+.sw-sheet[data-detent="full"] { height: calc(100vh - var(--sw-safe-top) - 10px); height: calc(100dvh - var(--sw-safe-top) - 10px); }
+
+/* ---------------- ещё легче для слабых телефонов ---------------- */
+
+/* Никаких переходов цвета и тени у карточек и линий: на слабом телефоне
+   каждый такой переход — лишние кадры перерисовки на тап. */
+.sw-is-mobile .react-flow__node,
+.sw-is-mobile .sw-node-card,
+.sw-is-mobile .react-flow__edge-path { transition: none !important; animation: none !important; }
+.sw-is-mobile .sw-node-card { box-shadow: none !important; }
+.sw-is-mobile body { transition: none; }
+.sw-sheet.sw-action-sheet { max-height: min(78vh, calc(100vh - var(--sw-safe-top) - 10px)); max-height: min(78dvh, calc(100dvh - var(--sw-safe-top) - 10px)); }
+.sw-writer-bar .sw-lmd-kbtn {
+  flex: none;
+  width: 46px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: var(--sw-text);
+}
+.sw-writer-bar .sw-lmd-kbtn:active { background: var(--sw-hover); }
+.sw-mdesc .sw-md { font-size: 15.5px; line-height: 1.6; }
+.sw-mdesc .sw-md h1, .sw-mdesc .sw-md h2, .sw-mdesc .sw-md h3 { font-family: var(--sw-font-display); }

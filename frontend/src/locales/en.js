@@ -781,6 +781,7 @@ const en = {
     language: "Language",
     yourWorlds: "Your worlds",
     linkHint: "Tap a node to link it with “{name}”",
+    done: "Done",
     longPressHint: "Press and hold a card for its menu",
   },
 };

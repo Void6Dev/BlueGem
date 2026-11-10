@@ -44,14 +44,17 @@ export default function NodePreview({
   // Где карточка на экране — одной строкой, округлённой до пикселя: селектор
   // срабатывает на каждый кадр движения холста, а перерисовывать превью стоит
   // только тогда, когда оно и правда сдвинулось.
+  // В шторке (телефон) положение карточки не нужно — и подписка на каждый
+  // кадр движения холста перерисовывала бы превью всё время панорамирования.
   const box = useStore(useCallback((s) => {
+    if (docked) return "";
     const n = s.nodeLookup.get(id);
     if (!n || n.hidden) return "";
     const p = n.internals.positionAbsolute;
     const [tx, ty, z] = s.transform;
     return [p.x * z + tx, p.y * z + ty, (n.measured?.width || 0) * z, (n.measured?.height || 0) * z, s.width, s.height]
       .map(Math.round).join("|");
-  }, [id]));
+  }, [id, docked]));
 
   // Высота нужна, чтобы прижать превью к низу экрана, а не дать ему уйти
   // под край. Картинка догружается позже разметки — поэтому наблюдатель.

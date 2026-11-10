@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { lazy, Suspense, useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import DockShell from "@/components/mobile/DockShell";
@@ -10,18 +10,23 @@ import { Input } from "@/components/ui/input";
 import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { Button } from "@/components/ui/button";
 import { NodeIcon } from "@/components/NodeIcon";
-import MarkdownEditor from "@/components/MarkdownEditor";
+// Редактор с живым оформлением (CodeMirror) — отдельным куском: на телефоне
+// описание пишут в системном поле, и разбирать сотни килобайт движка там незачем.
+const MarkdownEditor = lazy(() => import("@/components/MarkdownEditor"));
 import DateField from "@/components/chrono/DateField";
 import { scrollWithin } from "@/lib/scrollWithin";
 import { hotkey } from "@/lib/hotkey";
-import { pushBack } from "@/lib/platform";
+import { isMobileNow, pushBack, useIsMobile } from "@/lib/platform";
+import MobileDescription from "@/components/mobile/MobileDescription";
 import { tList, useT } from "@/lib/i18n";
 
 const RAIL_SPRING = { type: "spring", stiffness: 420, damping: 34 };
 
 /** Ползунок, который переезжает к полю, выбранному на карточке. */
 function FieldRail({ show }) {
-  if (!show) return null;
+  // На телефоне без ползунка: framer пересчитывает под него раскладку панели на
+  // каждой перерисовке, а слабому телефону каждая такая — заметная задержка.
+  if (!show || isMobileNow()) return null;
   return <motion.span layoutId="sw-field-rail" className="sw-field-rail" transition={RAIL_SPRING} />;
 }
 
@@ -67,6 +72,18 @@ export default function NodeEditorPanel({
   const [activeField, setActiveField] = useState(null); // "title" | "description"
   const fileRef = useRef(null);
   const descRef = useRef(null);
+  const mobile = useIsMobile();
+  const liveTimer = useRef(0);
+  const livePending = useRef({});
+  // Закрыли панель, не дождавшись паузы, — отдать холсту последнее.
+  const liveFlush = useRef(null);
+  liveFlush.current = () => {
+    clearTimeout(liveTimer.current);
+    const p = livePending.current;
+    livePending.current = {};
+    if (node && Object.keys(p).length) onLiveChange?.(node.id, p);
+  };
+  useEffect(() => () => liveFlush.current?.(), []);
   const titleRef = useRef(null);
   const scrollRef = useRef(null);
   const timerRef = useRef(null);
@@ -212,7 +229,20 @@ export default function NodeEditorPanel({
   const set = (patch) => {
     setDraft((d) => ({ ...d, ...patch }));
     setStatus("dirty");
-    onLiveChange?.(draft.id, patch);
+    if (!mobile) {
+      onLiveChange?.(draft.id, patch);
+      return;
+    }
+    // Телефон: холст спрятан под шторкой, и пересобирать его на каждую букву
+    // значит тормозить набор ради того, чего не видно. Догоняет после паузы.
+    livePending.current = { ...livePending.current, ...patch };
+    clearTimeout(liveTimer.current);
+    const targetId = draft.id;
+    liveTimer.current = setTimeout(() => {
+      const p = livePending.current;
+      livePending.current = {};
+      onLiveChange?.(targetId, p);
+    }, 500);
   };
 
   const addTag = (value) => {
@@ -446,6 +476,8 @@ export default function NodeEditorPanel({
           <FieldRail show={activeField === "description"} />
           <div className="flex items-center justify-between gap-2">
             <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("common.description")}</label>
+            {/* Блокнот на весь экран — на телефоне не нужен: там писать и так открывают во весь экран. */}
+            {!mobile && (
             <button
               data-testid="desc-expand-btn"
               onClick={() => setDescFull(true)}
@@ -454,6 +486,7 @@ export default function NodeEditorPanel({
             >
               <Maximize2 className="w-3.5 h-3.5" />
             </button>
+            )}
           </div>
           {descFull ? (
             // Текст уехал в блокнот. На его месте заглушка, а не второй
@@ -467,11 +500,19 @@ export default function NodeEditorPanel({
               <Maximize2 className="w-4 h-4" />
               {tr("node.openedFull")}
             </button>
+          ) : mobile ? (
+            <div className="mt-2">
+              <MobileDescription
+                key={nodeId}
+                {...descEditorProps}
+              />
+            </div>
           ) : (
             <div
               className="sw-desc-box mt-2"
               onFocusCapture={() => setActiveField("description")}
             >
+              <Suspense fallback={<div className="min-h-[8rem]" />}>
               <MarkdownEditor
                 // key по узлу: редактор держит своё состояние правки, и под
                 // чужой текст его надо заводить заново, а не донашивать прежнее.
@@ -482,6 +523,7 @@ export default function NodeEditorPanel({
                 listClassName="min-h-[8rem]"
                 toolbarScroll
               />
+              </Suspense>
             </div>
           )}
           <p className="mt-1.5 text-[11px] sw-text-dim flex items-center justify-between gap-2">
@@ -818,6 +860,7 @@ export default function NodeEditorPanel({
                   плохо, а блокнот — это про чтение и письмо. */}
               <div className="flex-1 min-h-0 flex justify-center">
                 <div className="w-full max-w-[54rem] h-full flex flex-col px-6 sm:px-10 py-5 gap-3">
+                  <Suspense fallback={null}>
                   <MarkdownEditor
                     key={`full-${nodeId}`}
                     {...descEditorProps}
@@ -825,6 +868,7 @@ export default function NodeEditorPanel({
                     className="flex-1 min-h-0 flex flex-col gap-3"
                     listClassName="sw-mde-lg flex-1 min-h-0 sw-scroll-y pr-1"
                   />
+                  </Suspense>
                   <p className="text-[11px] sw-text-dim flex items-center justify-between gap-2 shrink-0">
                     <span>{tr("node.markdownHint", { code: `[[${tr("edge.node")}]]` })}</span>
                     <span className="font-mono-sw shrink-0">{(draft.description || "").length}</span>
