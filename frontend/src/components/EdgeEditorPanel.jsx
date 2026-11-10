@@ -46,7 +46,7 @@ export default function EdgeEditorPanel({ edge, nodeTitles = {}, relTypes = [], 
       transition={{ type: "tween", duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
       className="sw-dock h-full w-[26rem] shrink-0 border-l sw-panel sw-border-c z-20 flex flex-col"
     >
-      <div className="flex items-center justify-between px-6 py-5 border-b sw-border-c">
+      <div data-sheet-drag="" className="flex items-center justify-between px-6 py-5 border-b sw-border-c">
         <span className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim flex items-center gap-2">
           <Link2 className="w-3.5 h-3.5" /> {t("edge.title")}
         </span>

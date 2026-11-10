@@ -171,8 +171,10 @@ function FarZoomFlag({ targetRef }) {
  * Своя подписка на масштаб, а не значение из редактора: иначе каждый щелчок
  * колеса перерисовывал бы весь редактор.
  */
-function CanvasGrid() {
-  const fine = useFlowStore((s) => s.transform[2] >= 0.45);
+function CanvasGrid({ lite = false }) {
+  // lite — телефон: одна сетка вместо двух, заливка узором во весь экран на
+  // каждый кадр стоит там заметно дороже.
+  const fine = useFlowStore((s) => !lite && s.transform[2] >= 0.45);
   return (
     <>
       <Background
@@ -593,10 +595,13 @@ function EditorInner() {
       if (!n) return;
       const w = n.measured?.width || NODE_W;
       const h = n.measured?.height || NODE_H;
-      rf.setCenter(n.position.x + w / 2, n.position.y + h / 2, { zoom: 1.05, duration: 420 });
+      // На телефоне узел открывают в шторке во весь экран — холст под ней не
+      // виден, и анимировать его незачем: это лишние кадры ровно тогда, когда
+      // телефон и так занят выездом шторки.
+      rf.setCenter(n.position.x + w / 2, n.position.y + h / 2, { zoom: 1.05, duration: mobile ? 0 : 420 });
     };
     requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(run)));
-  }, [rf]);
+  }, [rf, mobile]);
 
   const openNodeById = useCallback((nodeId) => {
     const found = rf.getNode(nodeId);
@@ -645,6 +650,9 @@ function EditorInner() {
   // ей, к какому полю подвести ползунок. Метка времени — чтобы повторный клик
   // по тому же полю снова сработал.
   const focusNodeField = useCallback((nodeId, field) => {
+    // На телефоне касание карточки — это быстрый просмотр, а не правка: поле
+    // в фокусе означало бы клавиатуру на пол-экрана при открытии панели.
+    if (mobile) return;
     const found = rf.getNode(nodeId);
     if (!found) return;
     setShowSettings(false);
@@ -653,7 +661,11 @@ function EditorInner() {
     setSelectedNode(found.data);
     setPanelOpen(true);
     setFocusField({ field, at: Date.now() });
-  }, [rf]);
+  }, [rf, mobile]);
+
+  // Панель закрыли — подсказка «к какому полю подъехать» больше ни к чему.
+  // Иначе она срабатывала при следующем открытии любого узла.
+  useEffect(() => { if (!panelOpen) setFocusField(null); }, [panelOpen]);
 
   /**
    * Правка из панели попадает на холст сразу, в том же кадре: на сервер она
@@ -2053,10 +2065,12 @@ function EditorInner() {
    * равно нельзя — на таком масштабе карточка размером с ноготь. Что именно
    * гасится, перечислено в .sw-perf (index.css).
    */
+  // На телефоне щадящий вид всегда: его видеочип пересчитывает тени, блики и
+  // фильтры карточек на каждый кадр движения, сколько бы карточек ни было.
   const flowClass = useMemo(() => [
-    rfNodes.length >= ANIM_LIMIT ? "sw-no-node-anim" : "",
-    rfNodes.length >= PERF_LIMIT ? "sw-perf" : "",
-  ].filter(Boolean).join(" "), [rfNodes.length]);
+    mobile || rfNodes.length >= ANIM_LIMIT ? "sw-no-node-anim" : "",
+    mobile || rfNodes.length >= PERF_LIMIT ? "sw-perf" : "",
+  ].filter(Boolean).join(" "), [rfNodes.length, mobile]);
 
   const toggleTag = (t) =>
     setActiveTags((prev) => {
@@ -2881,6 +2895,11 @@ function EditorInner() {
           // Пальцем карточку не удержать на месте до пикселя: дрожь на старте
           // долгого нажатия не должна двигать узел и писать «перенос» в историю.
           nodeDragThreshold={mobile ? 7 : 1}
+          // Палец при нажатии всегда немного съезжает. С допуском 0 (так по
+          // умолчанию) нажатие со сдвигом на пару пикселей считается уже не
+          // нажатием — карточка не открывалась, холст не закрывал превью.
+          nodeClickDistance={mobile ? 12 : 0}
+          paneClickDistance={mobile ? 12 : 0}
           // Loose: тянуть связь можно от любой стороны узла к любой. В строгом
           // режиме точка слева умеет только принимать, и граф раскладывается
           // единственным способом — слева направо.
@@ -2936,7 +2955,7 @@ function EditorInner() {
           data-testid="react-flow-canvas"
         >
           <FarZoomFlag targetRef={paneRef} />
-          {settings.showGrid && <CanvasGrid />}
+          {settings.showGrid && <CanvasGrid lite={mobile} />}
           {!mobile && settings.showMiniMap !== false && (
             <MiniMap
               pannable

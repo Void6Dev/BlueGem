@@ -7,9 +7,12 @@ android {
         applicationId "com.bluegem.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // Держать в согласии с version в корневом package.json (1.4.1 → 10401).
-        versionCode 10401
-        versionName "1.4.1"
+        // Версия — как в корневом package.json (1.4.1). Номер сборки с GitHub
+        // Actions дописывается в конец: каждая следующая сборка — обновление
+        // поверх прежней, а в «О приложении» видно, какая именно стоит.
+        def buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInteger()
+        versionCode 10401000 + buildNumber
+        versionName buildNumber > 0 ? "1.4.1 (${buildNumber})" : "1.4.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

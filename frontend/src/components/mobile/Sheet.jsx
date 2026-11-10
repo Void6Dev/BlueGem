@@ -1,5 +1,5 @@
 import {
-  createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState,
+  createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState,
 } from "react";
 import { createPortal } from "react-dom";
 import { haptic, pushBack } from "@/lib/platform";
@@ -9,11 +9,17 @@ import { haptic, pushBack } from "@/lib/platform";
  *
  * Всё, что на компьютере живёт панелью справа или окном по центру, на телефоне
  * выезжает снизу: туда достаёт большой палец, и холст над шторкой остаётся
- * виден. Правила те же, что у системных шторок Android:
+ * виден. Правила:
  *
- *   — тянут за ручку или за шапку: вниз — закрыть, вверх — развернуть;
- *   — тянут и за содержимое, если оно прокручено до самого верха;
+ *   — тянут за ручку и за шапку: вниз — закрыть, вверх — развернуть;
+ *   — содержимое шторку не тянет никогда, оно только прокручивается. Раньше
+ *     шторка ловила движение пальца вниз в начале списка — и на настоящем
+ *     телефоне, где палец при нажатии всегда немного съезжает, превращала
+ *     нажатия на кнопки в попытки её закрыть, а прокрутку — в рывки: каждое
+ *     движение ждало решения скрипта. Теперь прокруткой целиком занимается
+ *     система, без единого обработчика на пути;
  *   — закрывает быстрый взмах, даже короткий, а медленный — только дальний;
+ *   — пока тянут, двигается сам элемент, без перерисовок React;
  *   — системная кнопка «назад» закрывает верхнюю шторку, а не уводит со страницы;
  *   — фон за модальной шторкой затемнён и закрывает её касанием.
  *
@@ -31,22 +37,17 @@ export function useSheet() {
 
 const EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
 const DURATION = 300;
+const TRANSITION = `transform ${DURATION}ms ${EASE}`;
+const FADE = `opacity ${DURATION}ms ${EASE}`;
 const CLOSE_DISTANCE = 0.28; // доля высоты шторки
 const CLOSE_VELOCITY = 0.55; // px/ms — быстрый взмах закрывает с любого места
 const EXPAND_DISTANCE = 56;
+const SLOP = 8; // px — меньше этого палец просто нажимает, а не тянет
 
-/** Ближайший прокручиваемый предок в пределах шторки. */
-function scrollParent(el, stop) {
-  for (let n = el; n && n !== stop; n = n.parentElement) {
-    if (n.scrollHeight > n.clientHeight + 1) {
-      const oy = getComputedStyle(n).overflowY;
-      if (oy === "auto" || oy === "scroll") return n;
-    }
-  }
-  return null;
-}
+// За что можно тянуть. Шапки панелей помечают себя data-sheet-drag.
+const DRAG_ZONE = "[data-sheet-grip], [data-sheet-drag], .sw-sheet-head, .sw-preview-head, .sw-as-head";
 
-/** Поле ввода или что-то, что само ловит горизонтальный жест. */
+/** Поле ввода: в нём палец выделяет текст, а не тянет шторку. */
 function ownsGesture(el, stop) {
   for (let n = el; n && n !== stop; n = n.parentElement) {
     const tag = n.tagName;
@@ -54,6 +55,14 @@ function ownsGesture(el, stop) {
     if (n.dataset?.sheetNoDrag !== undefined) return true;
   }
   return false;
+}
+
+/** Погасить клик и мышиные события, которые браузер пришлёт после жеста. */
+function swallowNextClick() {
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+  const types = ["click", "mousedown", "mouseup"];
+  types.forEach((t) => window.addEventListener(t, stop, true));
+  setTimeout(() => types.forEach((t) => window.removeEventListener(t, stop, true)), 450);
 }
 
 export default function Sheet({
@@ -71,13 +80,16 @@ export default function Sheet({
   label,
 }) {
   const sheetRef = useRef(null);
+  const backdropRef = useRef(null);
   const [phase, setPhase] = useState("enter"); // enter → open → leave
-  const [drag, setDrag] = useState(0);
-  const [dragging, setDragging] = useState(false);
   const gesture = useRef(null);
+  const swallowClick = useRef(false);
   const closingRef = useRef(false);
+  const timerRef = useRef(0);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const onExpandRef = useRef(onExpand);
+  onExpandRef.current = onExpand;
 
   // Въезд: первый кадр — за краем, второй — на месте; переход делает CSS.
   useLayoutEffect(() => {
@@ -85,11 +97,12 @@ export default function Sheet({
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  const timerRef = useRef(0);
   const close = useCallback(() => {
     if (closingRef.current) return;
     closingRef.current = true;
-    setDragging(false);
+    const el = sheetRef.current;
+    if (el) el.style.transition = TRANSITION;
+    if (backdropRef.current) backdropRef.current.style.transition = FADE;
     setPhase("leave");
     timerRef.current = setTimeout(() => onCloseRef.current?.(), DURATION - 60);
   }, []);
@@ -111,115 +124,86 @@ export default function Sheet({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const height = () => sheetRef.current?.offsetHeight || 400;
-
-  const begin = (y) => {
-    gesture.current = { y0: y, last: y, t: performance.now(), v: 0, dy: 0 };
-    setDragging(true);
+  /** Сдвиг шторки пальцем — прямо в DOM, без перерисовки содержимого. */
+  const place = (px, animate) => {
+    const el = sheetRef.current;
+    if (!el) return;
+    el.style.transition = animate ? TRANSITION : "none";
+    el.style.transform = `translate3d(0, ${px}px, 0)`;
+    const bd = backdropRef.current;
+    if (bd) {
+      const h = el.offsetHeight || 1;
+      bd.style.transition = animate ? FADE : "none";
+      bd.style.opacity = String(Math.max(0, Math.min(1, 1 - Math.max(0, px) / h)));
+    }
   };
-  const move = (y) => {
+
+  const onPointerDown = (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const root = sheetRef.current;
+    const zone = e.target.closest?.(DRAG_ZONE);
+    if (!zone || !root?.contains(zone) || ownsGesture(e.target, root)) return;
+    gesture.current = {
+      id: e.pointerId, y0: e.clientY, last: e.clientY, t: performance.now(), v: 0, dy: 0, active: false,
+    };
+  };
+
+  const onPointerMove = (e) => {
     const g = gesture.current;
-    if (!g) return;
+    if (!g || e.pointerId !== g.id) return;
+    const dy = e.clientY - g.y0;
+    if (!g.active) {
+      // Палец едва сдвинулся — это ещё нажатие на кнопку в шапке.
+      if (Math.abs(dy) < SLOP) return;
+      g.active = true;
+      try { sheetRef.current.setPointerCapture(e.pointerId); } catch { /* уже отпустили */ }
+    }
     const now = performance.now();
     const dt = Math.max(1, now - g.t);
-    g.v = 0.7 * ((y - g.last) / dt) + 0.3 * g.v;
-    g.last = y;
+    g.v = 0.7 * ((e.clientY - g.last) / dt) + 0.3 * g.v;
+    g.last = e.clientY;
     g.t = now;
-    let dy = y - g.y0;
+    g.dy = dy;
     // Вверх шторка не едет, а упирается — с сопротивлением резинки.
-    if (dy < 0) dy = -Math.sqrt(-dy) * (onExpand ? 4 : 2.2);
-    g.dy = y - g.y0;
-    setDrag(dy);
+    place(dy < 0 ? -Math.sqrt(-dy) * (onExpandRef.current ? 4 : 2.2) : dy, false);
   };
-  const end = () => {
+
+  const finish = (e, cancelled) => {
     const g = gesture.current;
+    if (!g || (e && e.pointerId !== g.id)) return;
     gesture.current = null;
-    setDragging(false);
-    if (!g) return;
-    const h = height();
-    if (g.dy > h * CLOSE_DISTANCE || (g.v > CLOSE_VELOCITY && g.dy > 12)) {
+    if (!g.active) return;
+    // Отпустили после протяжки — клик под пальцем не нужен. Ловим его на
+    // всём окне: шторка могла уже закрыться или открыть вместо себя другую
+    // (превью → редактор), и клик достался бы её полю ввода — на телефоне
+    // это выскочившая сама по себе клавиатура.
+    swallowClick.current = true;
+    setTimeout(() => { swallowClick.current = false; }, 0);
+    swallowNextClick();
+    const h = sheetRef.current?.offsetHeight || 400;
+    if (!cancelled && (g.dy > h * CLOSE_DISTANCE || (g.v > CLOSE_VELOCITY && g.dy > 16))) {
       haptic("tick");
       close();
       return;
     }
-    if (onExpand && (g.dy < -EXPAND_DISTANCE || (g.v < -CLOSE_VELOCITY && g.dy < -12))) {
+    if (!cancelled && onExpandRef.current
+      && (g.dy < -EXPAND_DISTANCE || (g.v < -CLOSE_VELOCITY && g.dy < -16))) {
       haptic("light");
-      onExpand();
+      onExpandRef.current();
     }
-    setDrag(0);
+    place(0, true);
   };
-
-  // Ручка и шапка: обычные pointer-события, жест целиком наш.
-  const onHandleDown = (e) => {
-    if (e.button !== 0 && e.pointerType === "mouse") return;
-    if (ownsGesture(e.target, sheetRef.current)) return;
-    if (e.target.closest("button, a, [role='button']") && !e.target.closest("[data-sheet-grip]")) return;
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    begin(e.clientY);
-  };
-
-  // Содержимое: touch-события, потому что решать «листать или тянуть шторку»
-  // надо в момент первого движения, а pointer-события к этому времени уже
-  // отданы браузеру под прокрутку.
-  useEffect(() => {
-    const el = sheetRef.current;
-    if (!el) return undefined;
-    let start = null;
-    const onStart = (e) => {
-      if (e.touches.length !== 1 || gesture.current) { start = null; return; }
-      const t = e.touches[0];
-      if (ownsGesture(e.target, el)) { start = null; return; }
-      const scroller = scrollParent(e.target, el);
-      start = { y: t.clientY, x: t.clientX, scroller, decided: false };
-    };
-    const onMove = (e) => {
-      if (!start) return;
-      const t = e.touches[0];
-      const dy = t.clientY - start.y;
-      const dx = t.clientX - start.x;
-      if (!start.decided) {
-        if (Math.abs(dy) < 6 && Math.abs(dx) < 6) return;
-        start.decided = true;
-        const atTop = !start.scroller || start.scroller.scrollTop <= 0;
-        // Тянем шторку только вниз, только вертикально и только от верха списка.
-        if (!(dy > 0 && atTop && Math.abs(dy) > Math.abs(dx))) { start = null; return; }
-        begin(start.y);
-      }
-      e.preventDefault();
-      move(t.clientY);
-    };
-    const onEnd = () => {
-      if (start?.decided) end();
-      start = null;
-    };
-    el.addEventListener("touchstart", onStart, { passive: true });
-    el.addEventListener("touchmove", onMove, { passive: false });
-    el.addEventListener("touchend", onEnd);
-    el.addEventListener("touchcancel", onEnd);
-    return () => {
-      el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchmove", onMove);
-      el.removeEventListener("touchend", onEnd);
-      el.removeEventListener("touchcancel", onEnd);
-    };
-    // eslint-disable-next-line
-  }, []);
 
   const shown = phase === "open";
-  const offset = shown ? `${drag}px` : "100%";
-  const h = sheetRef.current?.offsetHeight || 1;
-  const dim = shown ? Math.max(0, Math.min(1, 1 - drag / h)) : 0;
+  const ctx = useMemo(() => ({ close }), [close]);
 
   return createPortal(
-    <SheetContext.Provider value={{ close }}>
+    <SheetContext.Provider value={ctx}>
       {modal && (
         <div
+          ref={backdropRef}
           className="sw-sheet-backdrop"
-          style={{
-            zIndex: z,
-            opacity: dim,
-            transition: dragging ? "none" : `opacity ${DURATION}ms ${EASE}`,
-          }}
+          style={{ zIndex: z, opacity: shown ? 1 : 0, transition: FADE }}
           onClick={close}
           data-testid={testId ? `${testId}-backdrop` : undefined}
         />
@@ -234,20 +218,22 @@ export default function Sheet({
         className={`sw-sheet sw-panel ${modal ? "" : "is-floating"} ${className}`}
         style={{
           zIndex: z + 1,
-          transform: `translate3d(0, ${offset}, 0)`,
-          transition: dragging ? "none" : `transform ${DURATION}ms ${EASE}`,
+          transform: shown ? "translate3d(0, 0px, 0)" : "translate3d(0, 100%, 0)",
+          transition: TRANSITION,
           ...style,
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={(e) => finish(e, false)}
+        onPointerCancel={(e) => finish(e, true)}
+        onClickCapture={(e) => {
+          if (!swallowClick.current) return;
+          e.preventDefault();
+          e.stopPropagation();
         }}
       >
         {handle && (
-          <div
-            className="sw-sheet-grip"
-            data-sheet-grip=""
-            onPointerDown={onHandleDown}
-            onPointerMove={(e) => gesture.current && move(e.clientY)}
-            onPointerUp={end}
-            onPointerCancel={end}
-          >
+          <div className="sw-sheet-grip" data-sheet-grip="">
             <span />
           </div>
         )}
@@ -257,4 +243,3 @@ export default function Sheet({
     document.body,
   );
 }
-

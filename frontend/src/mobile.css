@@ -766,3 +766,54 @@
   .sw-palette-close:active { background: var(--sw-hover); }
 }
 .sw-is-mobile .sw-mfloat { width: max-content; font-size: 13px; padding: 10px 16px; }
+
+/* =====================================================================
+   Жесты, прокрутка и скорость на настоящем телефоне.
+   ===================================================================== */
+
+/* За ручку и шапку шторку тянут — браузер не должен забирать этот жест себе
+   (иначе он присылает pointercancel посреди протяжки). Остальное содержимое
+   шторки прокручивается системой как обычно. */
+.sw-sheet-grip,
+.sw-sheet [data-sheet-drag],
+.sw-sheet .sw-sheet-head,
+.sw-sheet .sw-preview-head,
+.sw-sheet .sw-as-head { touch-action: none; }
+.sw-sheet-grip { padding: 10px 0 8px; }
+.sw-sheet-grip span { width: 42px; height: 5px; }
+/* Прокрутка в шторках — плавная, с инерцией, без «перепрыгивания» на холст. */
+.sw-sheet .sw-scroll-y,
+.sw-sheet .sw-sheet-body,
+.sw-sheet .sw-as-list { touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+
+/* Колонка во флексе по умолчанию не ужимается меньше своего содержимого —
+   и тогда прокручиваемый список внутри неё растягивается во всю длину, а окно
+   его обрезает: прокручивать становится нечего. */
+.sw-sheet .sw-dock-in-sheet > .flex-1 { min-height: 0; }
+@media (max-width: 767px) {
+  .sw-settings-main { min-height: 0; }
+  .sw-palette-host .sw-palette-list { min-height: 0; }
+}
+
+/* Видеочип телефона — не видеокарта компьютера. Всё, что пересчитывается на
+   каждый кадр движения холста или шторки, на телефоне выключено:
+   размытие фона, зерно и виньетка во весь экран, блики и тени карточек. */
+.sw-is-mobile .sw-glass,
+.sw-is-mobile .df-picker-pop,
+.sw-is-mobile .sw-mdash-head {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+.sw-is-mobile .sw-glass { background: var(--sw-surface-2); }
+.sw-is-mobile .sw-mdash-head { background: var(--sw-bg); }
+.sw-is-mobile .sw-canvas-grain,
+.sw-is-mobile .sw-canvas-vignette,
+.sw-is-mobile body::before { display: none; }
+.sw-is-mobile .sw-sheet { box-shadow: 0 -2px 18px rgba(0, 0, 0, 0.35); }
+.sw-is-mobile .sw-sheet-backdrop { will-change: opacity; }
+.sw-is-mobile .sw-sheet { will-change: transform; contain: layout paint; }
+
+/* Мгновенный отклик на касание — раньше, чем успеет отработать скрипт: палец
+   должен видеть, что нажатие принято. */
+.sw-is-mobile .sw-preview-edit:active,
+.sw-is-mobile .sw-preview-act:active { transform: scale(0.95); }
