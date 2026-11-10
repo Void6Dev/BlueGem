@@ -1,9 +1,18 @@
 # Android-сборка BlueGem.
 #
-# На каждый пуш, который трогает интерфейс или Android-проект, собирает APK
-# и кладёт его в артефакты прогона: Actions → прогон → Artifacts →
-# BlueGem-android. Внутри zip — один .apk, его можно ставить на телефон
-# (в настройках Android нужно разрешить установку из этого источника).
+# На каждый пуш, который трогает интерфейс или Android-проект, собирает APK и:
+#   * выкладывает его в постоянный релиз «android» — по ссылке ниже всегда
+#     лежит последняя сборка, без zip и без входа в GitHub:
+#     https://github.com/Void6Dev/BlueGem/releases/download/android/BlueGem.apk
+#   * кладёт его же в артефакты прогона (Actions → прогон → Artifacts).
+#
+# Почему релиз один и с тегом «android», а не новый на каждую сборку:
+#   * десктопная версия ищет обновления в Releases (electron/update.js) и берёт
+#     только теги вида 1.2.3 / v1.2.3 — тег «android» она пропускает, и Windows
+#     не примет телефонную сборку за своё обновление;
+#   * она же читает только 30 последних релизов — новый релиз на каждый пуш
+#     быстро вытеснил бы из этого окна настоящие обновления;
+#   * метку «Latest» релиз не забирает: она остаётся у десктопной версии.
 #
 # Сборка отладочная (подписана отладочным ключом): для публикации в Google Play
 # понадобится свой ключ и assembleRelease/bundleRelease.
@@ -11,6 +20,9 @@ name: Android APK
 
 on:
   push:
+    # Только ветки: перенос тега «android» этим же workflow не должен
+    # запускать его заново.
+    branches: ["**"]
     paths:
       - "frontend/**"
       - "scripts/build-android.mjs"
@@ -30,6 +42,9 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      # Перенести тег и обновить файл в релизе.
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -73,3 +88,42 @@ jobs:
           path: dist-android/*.apk
           if-no-files-found: error
           retention-days: 30
+
+      # Чужие pull request'ы в релиз не попадают — только то, что запушено
+      # в сам репозиторий.
+      - name: Publish to the "android" release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=android
+          version=$(node -p "require('./package.json').version")
+          short=${GITHUB_SHA::7}
+          built=$(date -u +"%Y-%m-%d %H:%M UTC")
+          cp dist-android/*.apk dist-android/BlueGem.apk
+
+          # Тег указывает на ту сборку, что лежит в релизе.
+          git tag -f "$tag" "$GITHUB_SHA"
+          git push -f origin "refs/tags/$tag"
+
+          cat > notes.md <<EOF
+          **Скачать:** [BlueGem.apk](https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/BlueGem.apk) — версия ${version}, сборка \`${short}\` из ветки \`${GITHUB_REF_NAME}\`, ${built}.
+
+          ### Как установить
+          1. Откройте ссылку выше на телефоне — скачается \`BlueGem.apk\`.
+          2. Нажмите на скачанный файл. Android спросит разрешение на установку из этого источника: «Настройки» → «Разрешить из этого источника» → назад → «Установить».
+          3. Если Play Защита предупредит о неизвестном разработчике — «Всё равно установить»: сборка подписана отладочным ключом.
+
+          Обновление ставится так же поверх прежней версии — проекты сохраняются.
+
+          Этот релиз обновляется сам при каждой сборке. Десктопная версия его не видит и обновлением не считает.
+          EOF
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --title "BlueGem для Android" --notes-file notes.md --latest=false
+          else
+            gh release create "$tag" --title "BlueGem для Android" --notes-file notes.md --latest=false
+          fi
+          gh release upload "$tag" dist-android/BlueGem.apk --clobber
+          echo "APK: https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/BlueGem.apk"

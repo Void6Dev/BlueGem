@@ -41,7 +41,7 @@ BlueGem also runs on Android phones, with an interface built for one hand:
 
 Projects on the phone are stored inside the app (no server, no account) and move between devices as `.bgproj` files.
 
-**Install:** open the latest **Android APK** run on the repository's *Actions* tab, download the `BlueGem-android` artifact and open the `.apk` on the phone (allow installing from that source when Android asks).
+**Install:** on the phone, open **[BlueGem.apk](https://github.com/Void6Dev/BlueGem/releases/download/android/BlueGem.apk)** and tap the downloaded file (allow installing from that source when Android asks). The link always points to the latest build; newer builds install over the old one and keep your projects. The same file is attached to the [BlueGem for Android](https://github.com/Void6Dev/BlueGem/releases/tag/android) release, which the desktop app ignores when it checks for updates.
 
 **Build it yourself** (Node 20+, JDK 21, Android SDK):
 

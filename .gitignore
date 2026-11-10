@@ -12,3 +12,5 @@ __pycache__/
 local.properties
 *.keystore
 *.jks
+# Отладочный ключ Android — общий намеренно, см. frontend/android/app/build.gradle.
+!frontend/android/app/bluegem-debug.keystore
