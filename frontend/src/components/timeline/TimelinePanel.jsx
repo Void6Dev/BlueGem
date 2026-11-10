@@ -4,6 +4,7 @@ import {
   Search, Settings2, X,
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
+import { isMobileNow } from "@/lib/platform";
 import {
   agesDuring, eraAt, formatAt, formatRange, lifespan, startOfYear, yearsBetween,
 } from "@/lib/chrono";
@@ -45,7 +46,9 @@ export default function TimelinePanel({
   const [search, setSearch] = useState("");
   const [groupBy, setGroupBy] = useState("none");
   const [showLinks, setShowLinks] = useState(false);
-  const [railOpen, setRailOpen] = useState(true);
+  // На телефоне фильтры — выдвижная панель поверх списка, и по умолчанию
+  // закрыта: иначе она съела бы половину узкого экрана.
+  const [railOpen, setRailOpen] = useState(() => !isMobileNow());
   const [picked, setPicked] = useState(null);
   const [hovered, setHovered] = useState(null);
   const [cursor, setCursor] = useState(0);

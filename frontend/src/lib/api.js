@@ -1,6 +1,15 @@
 import axios from "axios";
 import { apiBase, apiToken, isDesktop } from "@/lib/desktop";
 import { getLanguage, t } from "@/lib/i18n";
+import { isNative } from "@/lib/platform";
+import { localApi } from "@/lib/local/api";
+
+/**
+ * Данные без сервера: на телефоне (Capacitor) и в сборке с
+ * REACT_APP_STORAGE=local проекты живут в IndexedDB прямо в приложении.
+ * Методы те же самые — остальному интерфейсу всё равно, куда уходит запрос.
+ */
+export const isLocalStorage = isNative || process.env.REACT_APP_STORAGE === "local";
 
 // Откуда брать API, в порядке приоритета:
 //   1. адрес встроенного сервера, который передала десктопная оболочка;
@@ -41,7 +50,7 @@ export function apiErrorMessage(e, fallbackKey = "errors.generic") {
   return fallback;
 }
 
-export const api = {
+const remoteApi = {
   listProjects: () => client.get("/projects").then((r) => r.data),
   // lang уходит на сервер: типы узлов и первый холст нового проекта заводятся
   // на языке интерфейса. Дальше это уже данные проекта и сами не переводятся.
@@ -66,3 +75,12 @@ export const api = {
   updateEdge: (id, patch) => client.put(`/edges/${id}`, patch).then((r) => r.data),
   deleteEdge: (id) => client.delete(`/edges/${id}`).then((r) => r.data),
 };
+
+const offlineApi = {
+  ...localApi,
+  // Язык уходит в хранилище так же, как ушёл бы на сервер.
+  createProject: (data) => localApi.createProject({ lang: getLanguage(), ...data }),
+  listTemplates: () => localApi.listTemplates({ lang: getLanguage() }),
+};
+
+export const api = isLocalStorage ? offlineApi : remoteApi;

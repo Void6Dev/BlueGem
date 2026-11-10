@@ -1,0 +1,70 @@
+# Android-сборка BlueGem.
+#
+# На каждый пуш, который трогает интерфейс или Android-проект, собирает APK
+# и кладёт его в артефакты прогона: Actions → прогон → Artifacts →
+# BlueGem-android. Внутри zip — один .apk, его можно ставить на телефон
+# (в настройках Android нужно разрешить установку из этого источника).
+#
+# Сборка отладочная (подписана отладочным ключом): для публикации в Google Play
+# понадобится свой ключ и assembleRelease/bundleRelease.
+name: Android APK
+
+on:
+  push:
+    paths:
+      - "frontend/**"
+      - "scripts/build-android.mjs"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "scripts/build-android.mjs"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile --network-timeout 600000
+
+      - name: Build web app, sync Capacitor, assemble APK
+        run: node scripts/build-android.mjs --apk
+
+      - name: Name the APK
+        run: |
+          version=$(node -p "require('./package.json').version")
+          mkdir -p dist-android
+          cp frontend/android/app/build/outputs/apk/debug/app-debug.apk \
+             "dist-android/BlueGem-${version}-${GITHUB_SHA::7}.apk"
+          ls -l dist-android
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BlueGem-android
+          path: dist-android/*.apk
+          if-no-files-found: error
+          retention-days: 30

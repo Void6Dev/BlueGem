@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
+import DockShell from "@/components/mobile/DockShell";
 import {
   X, Plus, Trash2, Copy, ImagePlus, Check, Loader2,
   ArrowRight, ArrowLeft, Link2, ChevronDown, Maximize2, Minimize2,
@@ -13,6 +14,7 @@ import MarkdownEditor from "@/components/MarkdownEditor";
 import DateField from "@/components/chrono/DateField";
 import { scrollWithin } from "@/lib/scrollWithin";
 import { hotkey } from "@/lib/hotkey";
+import { pushBack } from "@/lib/platform";
 import { tList, useT } from "@/lib/i18n";
 
 const RAIL_SPRING = { type: "spring", stiffness: 420, damping: 34 };
@@ -126,6 +128,9 @@ export default function NodeEditorPanel({
         // Имя живёт в шапке панели, вне прокрутки, — доводить до него нечего.
         // Прежний scrollWithin здесь теперь только сбрасывал содержимое наверх.
         titleRef.current?.focus({ preventScroll: true });
+        // Только что созданный узел: имя-заготовку («Персонаж») выделяем
+        // целиком — первая же буква заменит его на настоящее.
+        if (focusField.select) titleRef.current?.select?.();
         return;
       }
       const host = descRef.current?.element();
@@ -180,6 +185,9 @@ export default function NodeEditorPanel({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [flush]);
+
+  // Кнопка «назад» на телефоне из блокнота тоже возвращает в панель.
+  useEffect(() => (descFull ? pushBack(() => setDescFull(false)) : undefined), [descFull]);
 
   // Esc из блокнота возвращает в панель, а не закрывает узел целиком. Слушаем
   // на перехвате и глушим событие: обработчик редактора висит на всплытии и
@@ -314,13 +322,14 @@ export default function NodeEditorPanel({
   const statusLabel = tr(`node.status.${status}`);
 
   return (
-    <motion.div
+    <DockShell
+      onClose={onClose}
+      testId="node-editor-panel"
+      detent="full"
       initial={{ opacity: 0, x: 12 }}
       animate={{ opacity: 1, x: 0 }}
-
       transition={{ type: "tween", duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
       className="sw-dock h-full w-[26rem] shrink-0 border-l sw-panel sw-border-c z-20 flex flex-col"
-      data-testid="node-editor-panel"
     >
       {/* Шапка панели повторяет шапку карточки: значок и название типа, а имя
           узла — крупной строкой под ними. Раньше здесь стояло имя мелким
@@ -778,7 +787,7 @@ export default function NodeEditorPanel({
               initial={{ opacity: 0, scale: 0.985 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-              className="fixed inset-0 z-[60] flex flex-col sw-panel"
+              className="fixed inset-0 z-[80] flex flex-col sw-panel sw-fullscreen"
               data-testid="desc-fullscreen"
             >
               <div className="flex items-center justify-between gap-3 px-6 py-3 border-b sw-border-c">
@@ -827,6 +836,6 @@ export default function NodeEditorPanel({
         ),
         document.body
       )}
-    </motion.div>
+    </DockShell>
   );
 }

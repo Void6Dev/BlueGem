@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import DockShell from "@/components/mobile/DockShell";
 import { X, Trash2, Save, Link2, ArrowRight, ArrowLeftRight, MousePointerClick } from "lucide-react";
 import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { Button } from "@/components/ui/button";
@@ -36,13 +37,14 @@ export default function EdgeEditorPanel({ edge, nodeTitles = {}, relTypes = [], 
     || { id: "", label: t("relTypes.plain"), color: DEFAULT_EDGE_COLOR };
 
   return (
-    <motion.div
+    <DockShell
+      onClose={onClose}
+      testId="edge-editor-panel"
+      detent="auto"
       initial={{ opacity: 0, x: 12 }}
       animate={{ opacity: 1, x: 0 }}
-
       transition={{ type: "tween", duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
       className="sw-dock h-full w-[26rem] shrink-0 border-l sw-panel sw-border-c z-20 flex flex-col"
-      data-testid="edge-editor-panel"
     >
       <div className="flex items-center justify-between px-6 py-5 border-b sw-border-c">
         <span className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim flex items-center gap-2">
@@ -155,6 +157,6 @@ export default function EdgeEditorPanel({ edge, nodeTitles = {}, relTypes = [], 
           </>
         )}
       </div>
-    </motion.div>
+    </DockShell>
   );
 }

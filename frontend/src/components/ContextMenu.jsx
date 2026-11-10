@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRight, Check } from "lucide-react";
+import ActionSheet from "@/components/mobile/ActionSheet";
+import { useIsMobile } from "@/lib/platform";
 
 const MIN_W = 224;
 const EDGE_PAD = 8;
@@ -14,6 +16,8 @@ const SUBMENU_GRACE_MS = 260;
  * or `{ id, separator: true }`, or `{ id, title: "…" }` for a section caption.
  */
 export default function ContextMenu({ menu, onClose }) {
+  // На телефоне то же меню выезжает снизу крупными строками (ActionSheet).
+  const mobile = useIsMobile();
   const ref = useRef(null);
   const subTimer = useRef(null);
   const [pos, setPos] = useState({ x: 0, y: 0, flipX: false });
@@ -48,7 +52,7 @@ export default function ContextMenu({ menu, onClose }) {
   }, [menu]);
 
   useEffect(() => {
-    if (!menu) return undefined;
+    if (!menu || mobile) return undefined;
     const close = () => onClose();
     const onKey = (e) => {
       if (e.key === "Escape") { e.stopPropagation(); onClose(); }
@@ -67,9 +71,10 @@ export default function ContextMenu({ menu, onClose }) {
       window.removeEventListener("resize", close);
       window.removeEventListener("keydown", onKey, true);
     };
-  }, [menu, onClose]);
+  }, [menu, onClose, mobile]);
 
   if (!menu) return null;
+  if (mobile) return <ActionSheet menu={menu} onClose={onClose} />;
 
   const pick = (item) => {
     if (item.disabled || !item.onSelect) return;

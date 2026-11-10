@@ -763,6 +763,26 @@ const en = {
     note: ["Source", "Status"],
     default: ["Description", "Status", "Note"],
   },
+  // Phone: bottom dock, sheets, touch hints.
+  mobile: {
+    world: "World",
+    worldTitle: "Whole world",
+    time: "Time",
+    undo: "Undo",
+    more: "More",
+    createTitle: "Add something",
+    pages: "Pages",
+    emptyHint: "Tap “+” below to write down your first hero, place or event.",
+    share: "Share project",
+    projectActions: "Project",
+    shareProject: "Share file",
+    newWorld: "New world",
+    sortBy: "Sort by",
+    language: "Language",
+    yourWorlds: "Your worlds",
+    linkHint: "Tap a node to link it with “{name}”",
+    longPressHint: "Press and hold a card for its menu",
+  },
 };
 
 export default en;

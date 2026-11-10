@@ -4,6 +4,7 @@ import { Search, CornerDownLeft } from "lucide-react";
 import { NodeIcon } from "@/components/NodeIcon";
 import { useT } from "@/lib/i18n";
 import { scrollWithin } from "@/lib/scrollWithin";
+import { useBackHandler } from "@/lib/platform";
 
 /**
  * Ctrl+K palette: one input that reaches every node and every command.
@@ -16,6 +17,7 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  useBackHandler(onClose, open);
 
   useEffect(() => {
     if (open) {
@@ -61,7 +63,7 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] px-4 bg-black/45 backdrop-blur-sm"
+      className="sw-palette-host fixed inset-0 z-50 flex items-start justify-center pt-[12vh] px-4 bg-black/45 backdrop-blur-sm"
       onClick={onClose}
       data-testid="command-palette"
     >
@@ -84,9 +86,13 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
             className="flex-1 bg-transparent outline-none text-sm placeholder:text-[var(--sw-text-dim)]"
           />
           <kbd>Esc</kbd>
+          {/* На телефоне Esc нет — закрыть можно кнопкой или системной «назад». */}
+          <button type="button" onClick={onClose} className="sw-palette-close" data-testid="command-palette-close">
+            {t("common.cancel")}
+          </button>
         </div>
 
-        <div ref={listRef} className="max-h-[52vh] overflow-y-auto py-2">
+        <div ref={listRef} className="sw-palette-list max-h-[52vh] overflow-y-auto py-2">
           {items.length === 0 && (
             <p className="px-4 py-6 text-center text-sm sw-text-dim">{t("common.nothingFound")}</p>
           )}

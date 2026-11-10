@@ -28,6 +28,29 @@ Download one of the files from the latest release.
 
 Launch the application—everything starts automatically.
 
+## Android
+
+BlueGem also runs on Android phones, with an interface built for one hand:
+
+* **Bottom dock** under your thumb: World list, Timeline, a big **+**, Undo and More.
+* **Tap** a card to peek at it in a sheet; **swipe the sheet up** to edit, **down** to close.
+* **Press and hold** a card, a link or empty canvas for its menu.
+* **+ → a node type**: the card appears and opens on its name, ready to type.
+* **Pinch** to zoom, drag with one finger to pan, the system **Back** button closes the top sheet.
+* **Share** a project as `.bgproj` or Markdown through the system share sheet; open a `.bgproj` from Files or a messenger straight into the app.
+
+Projects on the phone are stored inside the app (no server, no account) and move between devices as `.bgproj` files.
+
+**Install:** open the latest **Android APK** run on the repository's *Actions* tab, download the `BlueGem-android` artifact and open the `.apk` on the phone (allow installing from that source when Android asks).
+
+**Build it yourself** (Node 20+, JDK 21, Android SDK):
+
+```bash
+cd frontend && yarn install && cd ..
+npm run android:apk    # → frontend/android/app/build/outputs/apk/debug/app-debug.apk
+npm run android        # or open the project in Android Studio
+```
+
 ## Data
 
 BlueGem stores all projects locally on your computer.

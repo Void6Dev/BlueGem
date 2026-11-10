@@ -7,6 +7,9 @@ import ReactDOM from "react-dom/client";
 // React Flow first — our own sheet must be able to override it.
 import "@xyflow/react/dist/style.css";
 import "@/index.css";
+// Телефон: шторки, нижняя панель, отступы от вырезов. После index.css —
+// правила для узкого экрана должны перекрывать десктопные.
+import "@/mobile.css";
 import App from "@/App";
 import { applyStoredAppearance } from "@/lib/settings";
 
