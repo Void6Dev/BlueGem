@@ -338,7 +338,7 @@ export default function NodeEditorPanel({
         className="sw-typed px-6 pt-4 pb-3 border-b sw-border-c"
         style={{ "--node-color": activeType?.color || "#64748b" }}
       >
-        <div className="flex items-center gap-2 mb-2.5">
+        <div data-sheet-drag="" className="flex items-center gap-2 mb-2.5">
           <span className="sw-node-badge-icon is-lg">
             <NodeIcon name={activeType?.icon} className="text-white" />
           </span>
@@ -469,8 +469,7 @@ export default function NodeEditorPanel({
             </button>
           ) : (
             <div
-              className="mt-2 rounded-lg border sw-border-c px-3.5 py-3"
-              style={{ background: "color-mix(in srgb, var(--sw-bg) 55%, transparent)" }}
+              className="sw-desc-box mt-2"
               onFocusCapture={() => setActiveField("description")}
             >
               <MarkdownEditor
@@ -822,6 +821,7 @@ export default function NodeEditorPanel({
                   <MarkdownEditor
                     key={`full-${nodeId}`}
                     {...descEditorProps}
+                    large
                     className="flex-1 min-h-0 flex flex-col gap-3"
                     listClassName="sw-mde-lg flex-1 min-h-0 sw-scroll-y pr-1"
                   />
