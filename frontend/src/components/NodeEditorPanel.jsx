@@ -745,7 +745,7 @@ export default function NodeEditorPanel({
           <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.image")}</label>
           {draft.image ? (
             <div className="mt-2 relative">
-              <img src={imageSrc || undefined} alt="" className="w-full max-h-48 object-cover rounded-lg border sw-border-c" />
+              <img src={imageSrc || undefined} alt="" data-testid="node-image" className="w-full max-h-48 object-cover rounded-lg border sw-border-c" />
               <button
                 data-testid="remove-image-btn"
                 onClick={() => set({ image: "" })}
