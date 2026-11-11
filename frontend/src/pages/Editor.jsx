@@ -4,26 +4,24 @@ import {
 } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  ReactFlow, ReactFlowProvider, Background, MiniMap, useReactFlow, useStore as useFlowStore,
-  useNodesState, useEdgesState, addEdge, BackgroundVariant, MarkerType, ConnectionMode,
+  ReactFlow, ReactFlowProvider, MiniMap, useReactFlow,
+  useNodesState, useEdgesState, addEdge, ConnectionMode,
   useUpdateNodeInternals,
 } from "@xyflow/react";
 import { toast } from "sonner";
 import {
   ArrowLeft, Settings, Plus, Search, Network,
   Layers, CalendarRange, X, Download, Wand2, Keyboard, Maximize2,
-  ChevronDown, ChevronUp, Minus, FileJson, FileText as FileTextIcon, Undo2,
-  Link2, Unlink, Crosshair, Target, ArrowLeftRight, Pencil, Copy, Trash2,
-  SquareDashedMousePointer, Spline, Waypoints, Scissors, Shapes,
-  LayoutGrid, MoveHorizontal, Anchor, ClipboardPaste, Minimize2, Map as MapIcon, Eye, MoreHorizontal, Bookmark, BookmarkPlus,
-  BookOpen, Printer, Image as ImageIcon,
+  ChevronDown, ChevronUp, Minus, Undo2,
+  Link2, Crosshair, Pencil, Trash2,
+  SquareDashedMousePointer, Waypoints, Shapes,
+  LayoutGrid, ClipboardPaste, Minimize2, Map as MapIcon, MoreHorizontal, Bookmark,
 } from "lucide-react";
 import { api, apiErrorMessage } from "@/lib/api";
 import {
-  applySettings, applyStoredAppearance, DEFAULT_EDGE_COLOR, EDGE_SHAPES, relTypesOf,
+  applySettings, applyStoredAppearance, DEFAULT_EDGE_COLOR, relTypesOf,
 } from "@/lib/settings";
 import { useT } from "@/lib/i18n";
-import { hotkey } from "@/lib/hotkey";
 import { LAYOUTS } from "@/lib/layout";
 import { pushEntry } from "@/lib/history";
 import {
@@ -32,11 +30,9 @@ import {
 import { nodeBody } from "@/lib/search";
 import { backlinksOf } from "@/lib/backlinks";
 import { makeTemplate, nodeFromTemplate, templatesOf } from "@/lib/nodeTemplates";
-import CustomNode, { FAR_ZOOM } from "@/components/CustomNode";
 import NodePreview from "@/components/NodePreview";
 import EditorTopBar from "@/components/EditorTopBar";
 import WorldTree from "@/components/WorldTree";
-import GradientEdge from "@/components/GradientEdge";
 import ContextMenu from "@/components/ContextMenu";
 import { formatRange, normalizeEras, resolveCalendar, useChronology } from "@/lib/chrono";
 import { NodeIcon } from "@/components/NodeIcon";
@@ -78,301 +74,17 @@ function warmPanels() {
   if (!isMobileNow()) import("@/components/MarkdownEditor");
 }
 
-/**
- * Перевести ссылки относительных дат на новые id узлов.
- *
- * Нужно везде, где узлы пересоздаются: копия, возврат удалённого.
- * Возвращает null, если менять было нечего, — чтобы не ходить на сервер зря.
- */
-function remapDateRefs(dates, idMap) {
-  if (!Array.isArray(dates) || !dates.length) return null;
-  let touched = false;
-  const out = dates.map((entry) => {
-    const next = { ...entry };
-    for (const edge of ["start", "end"]) {
-      const value = next[edge];
-      const mapped = value?.rel?.nodeId && idMap[value.rel.nodeId];
-      if (!mapped) continue;
-      next[edge] = { ...value, rel: { ...value.rel, nodeId: mapped } };
-      touched = true;
-    }
-    return next;
-  });
-  return touched ? out : null;
-}
-
-const nodeTypes = { custom: CustomNode };
-const edgeTypes = { gradient: GradientEdge };
-const SIDEBAR_KEY = "bluegem:sidebar";
-const VIEW_KEY = "bluegem:view";
-
-/** Где человек оставил холст в прошлый раз: свой ключ на каждый проект. */
-function readView(projectId) {
-  try {
-    const all = JSON.parse(localStorage.getItem(VIEW_KEY) || "{}");
-    const v = all[projectId];
-    return v && Number.isFinite(v.x) && Number.isFinite(v.y) && v.zoom > 0 ? v : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeView(projectId, viewport) {
-  try {
-    const all = JSON.parse(localStorage.getItem(VIEW_KEY) || "{}");
-    all[projectId] = { x: viewport.x, y: viewport.y, zoom: viewport.zoom };
-    localStorage.setItem(VIEW_KEY, JSON.stringify(all));
-  } catch {
-    // Приватный режим или переполненное хранилище — потеря вида не повод падать.
-  }
-}
-const NODE_W = 260;
-const NODE_H = 150;
-// Выше этого числа узлов вход не анимируется: staggered появление двухсот
-// карточек — это мучительная секунда на каждом открытии проекта.
-const ANIM_LIMIT = 40;
-// Выше этого числа узлов React Flow держит в DOM только то, что попало в кадр.
-// Своей виртуализации не пишем — она у библиотеки есть; порог нужен затем, что
-// на маленьком графе монтирование при панорамировании стоит дороже, чем сотня
-// готовых карточек, которые всё равно никто не пересобирает.
-const CULL_LIMIT = 150;
-// Один пустой массив на все карточки без соседей и без дат: свежий литерал
-// в каждой проекции ломал бы сравнение по ссылке в самой карточке.
-const EMPTY_LIST = [];
-const EMPTY_OBJECT = {};
-
-// Выше этого — «щадящий вид»: без бесконечных подсветок, без saturate() на
-// каждой приглушённой карточке и без градиента в каждой линии. Смотри
-// .sw-perf в index.css: там же перечислено, что именно гасится.
-const PERF_LIMIT = 400;
-
-/** Что показывает счётчик масштаба. Отдельный компонент с подпиской на холст:
- *  иначе каждый щелчок колеса перерисовывал бы весь редактор. */
-function ZoomPercent() {
-  const percent = useFlowStore((s) => Math.round(s.transform[2] * 100));
-  return <>{percent}%</>;
-}
-
-/**
- * Отметка «холст отдалён» — класс .sw-far на холсте (см. index.css): связи
- * уходят на второй план за плашками узлов, подписи связей прячутся.
- * Отдельным компонентом и классом, а не состоянием редактора: подписка
- * срабатывает только на пересечении порога, и пересобирается один этот пустой
- * компонент, а не весь редактор.
- */
-function FarZoomFlag({ targetRef }) {
-  const far = useFlowStore((s) => s.transform[2] < FAR_ZOOM);
-  useEffect(() => {
-    targetRef.current?.classList.toggle("sw-far", far);
-  }, [far, targetRef]);
-  return null;
-}
-
-/**
- * Сетка холста. Две частоты: крупная даёт масштабный ориентир при отдалении,
- * мелкая — точность вблизи.
- *
- * Мелкая при этом рисуется только вблизи, и не ради красоты. Сетка — это
- * заливка узором во весь экран, и на каждый кадр движения она пересчитывается
- * заново; двух сеток разом — две заливки в кадр, и стоят они одинаково хоть
- * при пятидесяти карточках, хоть при пятистах. А на отдалении точки с шагом
- * в 22 единицы всё равно сходятся в серый шум: платить за них там не за что.
- *
- * Своя подписка на масштаб, а не значение из редактора: иначе каждый щелчок
- * колеса перерисовывал бы весь редактор.
- */
-function CanvasGrid({ lite = false }) {
-  // lite — телефон: одна сетка вместо двух, заливка узором во весь экран на
-  // каждый кадр стоит там заметно дороже.
-  const fine = useFlowStore((s) => !lite && s.transform[2] >= 0.45);
-  return (
-    <>
-      <Background
-        id="coarse"
-        variant={BackgroundVariant.Lines}
-        gap={110}
-        lineWidth={1}
-        color="color-mix(in srgb, var(--sw-border) 22%, transparent)"
-      />
-      {fine && (
-        <Background
-          id="fine"
-          variant={BackgroundVariant.Dots}
-          gap={22}
-          size={1.4}
-          color="color-mix(in srgb, var(--sw-border) 55%, transparent)"
-        />
-      )}
-    </>
-  );
-}
-
-/** Цвет точки на мини-карте. Функция модульная, а не стрелка в разметке:
- *  новая на каждый рендер заставляла мини-карту обходить все узлы заново. */
-const miniMapColor = (n) => n.data?.nodeType?.color || "#64748b";
-// Мини-карта меньше штатной (200×150): в окне ноутбука та закрывала четверть
-// холста, а для ориентира хватает и спичечного коробка. Размеры повторены в
-// .sw-minimap-toggle (index.css) — кнопка стоит в её углу.
-const MINIMAP_STYLE = { margin: 16, width: 176, height: 116 };
-const PRO_OPTIONS = { hideAttribution: true };
-
-/**
- * Содержимое узлов, не замечающее перетаскивания.
- *
- * React Flow подменяет объект узла на каждый кадр переноса, оставляя `data` тем
- * же. Всё, что считается по содержимому — теги, названия, соседи, — не должно
- * пересчитываться от того, что карточку подвинули на три пикселя. Сравниваем
- * ссылки на `data` (тот же приём, что в useChronology) и отдаём прежний список,
- * пока ни одна из них не сменилась.
- */
-function useNodeContent(rfNodes) {
-  const cache = useRef(null);
-  return useMemo(() => {
-    const prev = cache.current;
-    if (prev && prev.length === rfNodes.length && rfNodes.every((n, i) => n.data === prev[i])) {
-      return prev;
-    }
-    const next = rfNodes.map((n) => n.data);
-    cache.current = next;
-    return next;
-  }, [rfNodes]);
-}
-
-// Поля, от которых зависит всё, что показывается не в самой карточке: список
-// в панели, соседи, теги, счётчики, палитра команд, хронология. Описание и
-// характеристики сюда не входят — и в этом весь смысл (см. useNodeFacts).
-const FACT_KEYS = ["title", "typeId", "tags", "canvas", "nodeType", "dates"];
-
-/**
- * То же, но по перечисленным полям, а не по объекту `data` целиком.
- *
- * Разница решающая. Правка в панели узла уходит на холст тем же кадром, то есть
- * подменяет `data` на каждую набранную букву. Пока производные считались от
- * `data`, каждая буква описания пересобирала соседей — а соседи выдаются
- * карточкам массивом, и новый массив означал новый объект узла для каждой из
- * них. Одна буква стоила тысячи перерисовок.
- *
- * Возвращаются те же объекты `data`, но список сохраняет прежние ссылки, пока
- * ни одно из перечисленных полей не менялось. Договор такой же, как у
- * useChronology: читать из этого списка можно только перечисленные поля —
- * остальные в нём могут быть от предыдущей правки.
- */
-function useNodeFacts(rfNodes) {
-  const cache = useRef(null);
-  return useMemo(() => {
-    const width = FACT_KEYS.length;
-    const prev = cache.current;
-    let same = prev && prev.list.length === rfNodes.length;
-    for (let i = 0; same && i < rfNodes.length; i += 1) {
-      const d = rfNodes[i].data;
-      if (d === prev.list[i]) continue;
-      for (let k = 0; k < width; k += 1) {
-        if (prev.marks[i * width + k] !== d[FACT_KEYS[k]]) { same = false; break; }
-      }
-    }
-    if (same) return prev.list;
-    const marks = new Array(rfNodes.length * width);
-    const list = new Array(rfNodes.length);
-    for (let i = 0; i < rfNodes.length; i += 1) {
-      const d = rfNodes[i].data;
-      list[i] = d;
-      for (let k = 0; k < width; k += 1) marks[i * width + k] = d[FACT_KEYS[k]];
-    }
-    cache.current = { marks, list };
-    return list;
-  }, [rfNodes]);
-}
-
-// Build a React Flow edge. Линия в покое нейтральна для всех типов связей:
-// цвет типа живёт в --rel-color и проявляется под курсором и в выделении.
-// Граф из разноцветных линий превращается в спагетти — этого не повторяем.
-function toRfEdge(e, settings) {
-  const color = e.color || DEFAULT_EDGE_COLOR;
-  return {
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    // Стороны узлов, между которыми связь провели. Без них React Flow цепляет
-    // линию к первой точке узла — то есть к левой, что бы ни соединяли.
-    sourceHandle: e.sourceHandle || undefined,
-    targetHandle: e.targetHandle || undefined,
-    label: e.label,
-    // Свой тип ребра: переливается из цвета исходного узла в цвет целевого и
-    // помнит точки излома. Прежний edgeType из настроек стал формой линии
-    // внутри него — она по-прежнему настраивается, но рисует уже наше ребро.
-    type: "gradient",
-    animated: !!settings?.animatedEdges,
-    markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "var(--sw-edge)" },
-    style: { "--rel-color": color },
-    data: {
-      relType: e.relType || "",
-      color: e.color || "",
-      points: e.points || [],
-      // Форма своя, если её задали этой связи; иначе общая из настроек.
-      shape: e.shape || settings?.edgeType || "smoothstep",
-      shapeOwn: e.shape || "",
-    },
-  };
-}
-
-/**
- * Имя копии: «Крепость» → «Крепость (1)», следующая → «Крепость (2)».
- *
- * Номер, а не слово. Слово в скобках копилось: копия копии называлась
- * «Крепость (дублировать) (дублировать)», и к третьему разу от имени в карточке
- * не оставалось ничего, кроме скобок. Номер у уже пронумерованной копии
- * заменяется, а не дописывается, — поэтому цепочка не растёт.
- *
- * Берётся первый свободный номер, а не следующий за наибольшим: после удаления
- * пятой копии шестая незачем.
- *
- * @param {string} title имя оригинала
- * @param {Set<string>} taken занятые имена в нижнем регистре
- */
-function copyTitle(title, taken) {
-  const base = (title || "").replace(/\s*\(\d+\)\s*$/, "").trim();
-  let n = 1;
-  while (taken.has(`${base} (${n})`.toLowerCase())) n += 1;
-  return `${base} (${n})`;
-}
-
-/** Изломы совпадают? Нужно, чтобы не писать в историю «правку», которой не было. */
-function samePoints(a = [], b = []) {
-  return a.length === b.length && a.every((p, i) => p.x === b[i].x && p.y === b[i].y);
-}
-
-/** Строки дат совпадают? Та же роль, что и у sameNeighbours. */
-function sameDateLines(a, b) {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if (a[i].key !== b[i].key || a[i].label !== b[i].label || a[i].text !== b[i].text) return false;
-  }
-  return true;
-}
-
-/** Списки соседей совпадают? По ним решается, перерисовывать ли карточку. */
-function sameNeighbours(a, b) {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    const x = a[i];
-    const y = b[i];
-    if (x.id !== y.id || x.title !== y.title || x.outgoing !== y.outgoing
-      || x.away !== y.away || x.rel !== y.rel || x.color !== y.color) return false;
-  }
-  return true;
-}
-
-function readSidebarPrefs() {
-  // scope — что показывает дерево: текущий холст или весь мир; collapsed —
-  // свёрнутые группы типов, по id типа.
-  const fallback = { open: true, width: 268, scope: "canvas", collapsed: {} };
-  try {
-    const saved = JSON.parse(localStorage.getItem(SIDEBAR_KEY) || "{}");
-    return { ...fallback, ...saved };
-  } catch {
-    return fallback;
-  }
-}
+import {
+  ANIM_LIMIT, CULL_LIMIT, EMPTY_LIST, EMPTY_OBJECT, NODE_H, NODE_W, PERF_LIMIT, SIDEBAR_KEY,
+  copyTitle, readSidebarPrefs, readView, remapDateRefs, sameDateLines, sameNeighbours, samePoints,
+  toRfEdge, useNodeContent, useNodeFacts, writeView,
+} from "@/pages/editor/model";
+import {
+  CanvasGrid, FarZoomFlag, MINIMAP_STYLE, PRO_OPTIONS, ZoomPercent, edgeTypes, miniMapColor, nodeTypes,
+} from "@/pages/editor/CanvasParts";
+import { useCanvasMenus } from "@/pages/editor/useCanvasMenus";
+import { useEditorHotkeys } from "@/pages/editor/useEditorHotkeys";
+import { exportCommands, exportMenuItems } from "@/pages/editor/exportItems";
 
 function EditorInner() {
   // tr, а не t: имя `t` в этом файле занято типами узлов и тегами.
@@ -2269,308 +1981,18 @@ function EditorInner() {
 
   /* ---------------- right-click menus ---------------- */
 
-  const typeItems = useCallback((onPick, prefix) => (settings?.nodeTypes || []).map((t) => ({
-    id: `${prefix}-${t.id}`,
-    label: t.label,
-    swatch: t.color,
-    onSelect: () => onPick(t.id),
-  })), [settings]);
-
-  const canvasItems = useCallback((nodes) => canvases.map((c) => ({
-    id: `to-canvas-${c.id}`,
-    label: c.label,
-    disabled: nodes.every((n) => (n.data.canvas || mainCanvasId) === c.id),
-    onSelect: () => moveNodesToCanvas(nodes, c.id),
-  })), [canvases, mainCanvasId, moveNodesToCanvas]);
-
-  /**
-   * Вид карточки для выбранных узлов. «Как в настройках» — не третий вид, а
-   * отказ от своего: узел снова слушается общей настройки проекта.
-   */
-  const cardModeItems = useCallback((nodes, prefix) => {
-    const ids = nodes.map((n) => n.id);
-    const same = (v) => nodes.every((n) => (n.data.cardModeOwn || "") === v);
-    const common = tr(`settings.cardStyles.${(settings?.cardMode || "detailed") === "compact" ? "compact" : "detailed"}`);
-    return [
-      {
-        id: `${prefix}-cm-inherit`,
-        label: tr("ctx.cardModeInherit", { mode: common.toLowerCase() }),
-        checked: same(""),
-        onSelect: () => setNodeCardMode(ids, ""),
-      },
-      { id: `${prefix}-cm-sep`, separator: true },
-      {
-        id: `${prefix}-cm-detailed`,
-        label: tr("settings.cardStyles.detailed"),
-        checked: same("detailed"),
-        onSelect: () => setNodeCardMode(ids, "detailed"),
-      },
-      {
-        id: `${prefix}-cm-compact`,
-        label: tr("settings.cardStyles.compact"),
-        checked: same("compact"),
-        onSelect: () => setNodeCardMode(ids, "compact"),
-      },
-    ];
-  }, [settings, setNodeCardMode, tr]);
-
-  /**
-   * Телефон: в меню — только то, что там правда нужно. С компьютера пришли
-   * пункты вроде «Вернуть ширину» и «Развернуть карточку» — на телефоне они
-   * ничего не значат и только удлиняли список до четырнадцати строк.
-   */
-  const forPhone = useCallback((items, keep) => {
-    if (!mobile) return items;
-    const out = [];
-    for (const it of items) {
-      if (it.separator) {
-        if (out.length && !out[out.length - 1].separator) out.push(it);
-      } else if (keep.includes(it.id)) out.push(it);
-    }
-    while (out.length && out[out.length - 1].separator) out.pop();
-    return out;
-  }, [mobile]);
-
-  // Что сейчас развёрнуто — читаем из ref, а не из зависимостей. Иначе
-  // обработчик меню менялся на каждый разворот карточки, а вместе с ним
-  // пересобирался список узлов в панели: тысяча строк на один щелчок.
-  const expandedRef = useRef(null);
-  expandedRef.current = expandedId;
-
-  const openNodeMenu = useCallback((e, node) => {
-    e.preventDefault();
-    const mine = rfEdges.filter((x) => x.source === node.id || x.target === node.id);
-    const isExpanded = expandedRef.current === node.id;
-    setMenu({
-      x: e.clientX,
-      y: e.clientY,
-      header: node.data.title || tr("common.untitled"),
-      headerColor: node.data.nodeType?.color,
-      items: forPhone([
-        { id: "open", label: tr(mobile ? "mobile.open" : "ctx.openInEditor"), icon: Pencil, onSelect: () => openNodeById(node.id) },
-        { id: "peek", label: tr("ctx.preview"), icon: Eye, onSelect: () => peekNode(node.id) },
-        {
-          id: "expand",
-          label: tr(isExpanded ? "ctx.collapseCard" : "ctx.expandCard"),
-          icon: isExpanded ? Minimize2 : Maximize2,
-          onSelect: () => setExpandedId((cur) => (cur === node.id ? null : node.id)),
-        },
-        {
-          id: "node-type",
-          label: tr("ctx.changeType"),
-          icon: Shapes,
-          items: (settings?.nodeTypes || []).map((t) => ({
-            id: `settype-${t.id}`,
-            label: t.label,
-            swatch: t.color,
-            checked: (node.data.typeId || "note") === t.id,
-            onSelect: () => changeNodeType(node, t.id),
-          })),
-        },
-        { id: "sep-links", separator: true },
-        { id: "link", label: tr("ctx.linkTo"), icon: Crosshair, hint: tr("ctx.linkToHint"), onSelect: () => setLinkSource(node.id) },
-        { id: "link-new", label: tr("ctx.newLinkedNode"), icon: Plus, items: typeItems((t) => addConnectedNode(node, t), "linknew") },
-        {
-          id: "unlink-one",
-          label: tr("ctx.removeLink"),
-          icon: Unlink,
-          disabled: !mine.length,
-          items: mine.map((edge) => {
-            const outgoing = edge.source === node.id;
-            const other = outgoing ? edge.target : edge.source;
-            return {
-              id: `unlink-${edge.id}`,
-              label: `${outgoing ? "→" : "←"} ${nodeTitles[other] || tr("ctx.node")}${edge.label ? ` (${edge.label})` : ""}`,
-              swatch: edge.data?.color || DEFAULT_EDGE_COLOR,
-              onSelect: () => deleteSelectedEdge(edge.id),
-            };
-          }),
-        },
-        { id: "unlink-all", label: tr("ctx.unlinkAll", { count: mine.length }), icon: Scissors, disabled: !mine.length, onSelect: () => unlinkAll(node.id) },
-        { id: "sep-node", separator: true },
-        { id: "card-mode", label: tr("ctx.cardMode"), icon: LayoutGrid, items: cardModeItems([node], "node") },
-        {
-          id: "reset-width",
-          label: tr("ctx.resetWidth"),
-          icon: MoveHorizontal,
-          disabled: !node.data.width,
-          onSelect: () => resizeNode(node.id, 0),
-        },
-        { id: "sep-node2", separator: true },
-        { id: "dup", label: tr("ctx.duplicate"), icon: Copy, hint: "Ctrl D", onSelect: () => duplicateNode(node.data) },
-        { id: "save-tpl", label: tr("templates.saveAs"), icon: BookmarkPlus, onSelect: () => saveAsTemplate(node.data) },
-        { id: "focus", label: tr("ctx.center"), icon: Target, onSelect: () => focusNode(node.id) },
-        ...(canvases.length > 1
-          ? [{ id: "move-canvas", label: tr("ctx.moveToCanvas"), icon: Layers, items: canvasItems([node]) }]
-          : []),
-        { id: "sep-del", separator: true },
-        { id: "del", label: tr("ctx.deleteNode"), icon: Trash2, danger: true, onSelect: () => deleteNode(node.id) },
-      ], ["open", "node-type", "link-new", "dup", "save-tpl", "move-canvas", "del"]),
-    });
-  }, [rfEdges, nodeTitles, typeItems, canvasItems, cardModeItems, canvases.length, settings, changeNodeType,
-      openNodeById, addConnectedNode, deleteSelectedEdge, unlinkAll, duplicateNode, focusNode, deleteNode,
-      resizeNode, peekNode, forPhone, saveAsTemplate]);
-
-  // Список в панели знает про узел только его id — сам узел спрашиваем здесь.
-  // Так список не зависит от объектов React Flow и переживает перенос карточек
-  // без единой перерисовки.
-  const openNodeMenuById = useCallback((e, nodeId) => {
-    const node = rf.getNode(nodeId);
-    if (node) openNodeMenu(e, node);
-  }, [rf, openNodeMenu]);
-
-  const openEdgeMenu = useCallback((e, edge) => {
-    e.preventDefault();
-    // Куда ткнули на самой линии — сюда встанет крепление из меню.
-    const at = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-    const points = edge.data?.points || [];
-    setMenu({
-      x: e.clientX,
-      y: e.clientY,
-      header: `${nodeTitles[edge.source] || "?"} → ${nodeTitles[edge.target] || "?"}`,
-      headerColor: edge.data?.color || DEFAULT_EDGE_COLOR,
-      items: forPhone([
-        { id: "edit-edge", label: tr("ctx.editEdge"), icon: Pencil, onSelect: () => { closeAll(); setSelectedEdge(edge); } },
-        {
-          id: "rel-type",
-          label: tr("ctx.edgeType"),
-          icon: Spline,
-          items: relTypes.map((r) => ({
-            id: `rel-${r.id || "none"}`,
-            label: r.label,
-            swatch: r.color,
-            checked: (edge.data?.relType || "") === r.id,
-            onSelect: () => quickSetRelType(edge, r.id),
-          })),
-        },
-        { id: "swap", label: tr("ctx.swapDirection"), icon: ArrowLeftRight, onSelect: () => swapEdgeDirection(edge) },
-        { id: "sep-edge-shape", separator: true },
-        // Крепления ставятся протяжкой самой линии, но узнать об этом неоткуда —
-        // поэтому то же самое лежит и в меню, вместе со «выпрямить».
-        {
-          id: "edge-points",
-          label: tr("ctx.edgePoints", { count: points.length }),
-          icon: Anchor,
-          items: [
-            { id: "point-add", label: tr("ctx.addPoint"), icon: Anchor, onSelect: () => addEdgePoint(edge, at) },
-            {
-              id: "point-clear",
-              label: tr("ctx.straighten"),
-              icon: Minus,
-              disabled: !points.length,
-              onSelect: () => straightenEdge(edge),
-            },
-          ],
-        },
-        {
-          id: "edge-shape",
-          label: tr("ctx.edgeShape"),
-          icon: Spline,
-          items: [
-            {
-              id: "shape-inherit",
-              label: tr("ctx.shapeInherit", { shape: tr(`settings.edgeStyles.${settings?.edgeType || "smoothstep"}`).toLowerCase() }),
-              checked: !edge.data?.shapeOwn,
-              onSelect: () => setEdgeShape(edge, ""),
-            },
-            { id: "shape-sep", separator: true },
-            ...EDGE_SHAPES.map((s) => ({
-              id: `shape-${s}`,
-              label: tr(`settings.edgeStyles.${s}`),
-              checked: edge.data?.shapeOwn === s,
-              onSelect: () => setEdgeShape(edge, s),
-            })),
-          ],
-        },
-        { id: "sep-edge", separator: true },
-        { id: "goto-source", label: tr("ctx.goTo", { name: nodeTitles[edge.source] || tr("ctx.node") }), icon: Target, onSelect: () => openNodeById(edge.source) },
-        { id: "goto-target", label: tr("ctx.goTo", { name: nodeTitles[edge.target] || tr("ctx.node") }), icon: Target, onSelect: () => openNodeById(edge.target) },
-        { id: "sep-edge-del", separator: true },
-        { id: "del-edge", label: tr("ctx.deleteEdge"), icon: Trash2, danger: true, onSelect: () => deleteSelectedEdge(edge.id) },
-      ], ["rel-type", "swap", "goto-source", "goto-target", "del-edge"]),
-    });
-  }, [nodeTitles, closeAll, quickSetRelType, swapEdgeDirection, openNodeById, deleteSelectedEdge,
-      rf, settings, relTypes, addEdgePoint, straightenEdge, setEdgeShape, forPhone]);
-
-  const openPaneMenu = useCallback((e) => {
-    e.preventDefault();
-    const at = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-    const position = { x: at.x - NODE_W / 2, y: at.y - NODE_H / 2 };
-    setMenu({
-      x: e.clientX,
-      y: e.clientY,
-      items: forPhone([
-        {
-          id: "new-here",
-          label: tr("ctx.createHere"),
-          icon: Plus,
-          items: [
-            ...typeItems((t) => addNode(t, position), "new"),
-            ...templateItems(position, "new"),
-            { id: "sep-new-type", separator: true },
-            { id: "make-type", label: tr("ctx.newType"), icon: Shapes, onSelect: createNodeType },
-          ],
-        },
-        // Недоступное не показываем серым, а не показываем вовсе: два
-        // погашенных пункта в каждом меню учили их не читать.
-        ...(clipboardRef.current?.nodes?.length ? [{
-          id: "paste",
-          label: tr("ctx.paste"),
-          icon: ClipboardPaste,
-          hint: "Ctrl V",
-          onSelect: pasteNodes,
-        }] : []),
-        ...(undoRef.current.length ? [{
-          id: "undo", label: tr("palette.undo"), icon: Undo2, hint: "Ctrl Z", onSelect: undo,
-        }] : []),
-        { id: "sep-pane", separator: true },
-        {
-          id: "layout",
-          label: tr("ctx.autoLayout"),
-          icon: Wand2,
-          items: LAYOUTS.map((l) => ({ id: `layout-${l.id}`, label: tr(l.labelKey), onSelect: () => runLayout(l.id) })),
-        },
-        { id: "fit", label: tr("editor.fitView"), icon: Maximize2, hint: "F", onSelect: () => rf.fitView({ padding: 0.2, duration: 400 }) },
-        // Мини-карты на телефоне нет — нечего и переключать.
-        ...(mobile ? [] : [{
-          id: "minimap",
-          label: tr("settings.showMiniMap"),
-          icon: MapIcon,
-          checked: settings.showMiniMap !== false,
-          onSelect: () => changeSettings({ ...settings, showMiniMap: settings.showMiniMap === false }),
-        }]),
-        { id: "select-all", label: tr("ctx.selectAll"), icon: SquareDashedMousePointer, onSelect: selectAllVisible },
-        // Новый холст, таймлайн, палитра и настройки стоят в верхней панели
-        // на виду — в меню холста они только удлиняли список вдвое.
-      ], ["new-here", "paste", "layout", "fit"]),
-    });
-  }, [rf, typeItems, addNode, runLayout, selectAllVisible, closeAll, createNodeType,
-      pasteNodes, undo, addCanvas, settings, changeSettings, mobile, forPhone, templateItems]);
-
-  const openSelectionMenu = useCallback((e, nodes) => {
-    e.preventDefault();
-    setMenu({
-      x: e.clientX,
-      y: e.clientY,
-      header: tr("ctx.selected", { count: tr("count.nodes", { count: nodes.length }) }),
-      items: [
-        { id: "chain", label: tr("ctx.chain"), icon: Waypoints, disabled: nodes.length < 2, onSelect: () => chainConnect(nodes) },
-        { id: "copy-many", label: tr("ctx.copy"), icon: Copy, hint: "Ctrl C", onSelect: copyNodes },
-        { id: "card-mode-many", label: tr("ctx.cardMode"), icon: LayoutGrid, items: cardModeItems(nodes, "sel") },
-        ...(canvases.length > 1
-          ? [{ id: "move-canvas-many", label: tr("ctx.moveToCanvas"), icon: Layers, items: canvasItems(nodes) }]
-          : []),
-        { id: "sep-sel", separator: true },
-        {
-          id: "del-many",
-          label: tr("ctx.deleteSelected", { count: nodes.length }),
-          icon: Trash2,
-          danger: true,
-          onSelect: () => rf.deleteElements({ nodes: nodes.map((n) => ({ id: n.id })) }),
-        },
-      ],
-    });
-  }, [chainConnect, canvasItems, cardModeItems, canvases.length, rf, copyNodes]);
+  const {
+    typeItems, canvasItems, cardModeItems, forPhone, expandedRef,
+    openNodeMenu, openNodeMenuById, openEdgeMenu, openPaneMenu, openSelectionMenu,
+  } = useCanvasMenus({
+    addCanvas, addConnectedNode, addEdgePoint, addNode, canvases, chainConnect, changeNodeType,
+    changeSettings, clipboardRef, closeAll, copyNodes, createNodeType, deleteNode,
+    deleteSelectedEdge, duplicateNode, expandedId, focusNode, mainCanvasId, mobile,
+    moveNodesToCanvas, nodeTitles, openNodeById, pasteNodes, peekNode, quickSetRelType,
+    relTypes, resizeNode, rf, rfEdges, runLayout, saveAsTemplate, selectAllVisible,
+    setEdgeShape, setExpandedId, setLinkSource, setMenu, setNodeCardMode, setSelectedEdge,
+    settings, straightenEdge, swapEdgeDirection, templateItems, tr, undo, undoRef, unlinkAll,
+  });
 
   /* ---------------- телефон ---------------- */
 
@@ -2642,12 +2064,7 @@ function EditorInner() {
     { id: "fit", label: tr("palette.fit"), hint: "F", icon: Maximize2, run: () => rf.fitView({ padding: 0.2, duration: 400 }) },
     { id: "timeline", label: tr("palette.timeline"), icon: CalendarRange, run: () => { closeAll(); setShowTimeline(true); } },
     { id: "settings", label: tr("palette.settings"), icon: Settings, run: () => { closeAll(); setShowSettings(true); } },
-    { id: "export-json", label: tr("palette.exportJson"), icon: FileJson, run: () => exportAs("json") },
-    { id: "export-md", label: tr("palette.exportMd"), icon: FileTextIcon, run: () => exportAs("md") },
-    { id: "export-html", label: tr("palette.exportHtml"), icon: BookOpen, run: () => exportAs("html") },
-    { id: "export-pdf", label: tr("palette.exportPdf"), icon: Printer, run: () => exportAs("pdf") },
-    { id: "export-png", label: tr("palette.exportPng"), icon: ImageIcon, run: () => exportAs("png") },
-    { id: "export-svg", label: tr("palette.exportSvg"), icon: ImageIcon, run: () => exportAs("svg") },
+    ...exportCommands(tr, exportAs),
     { id: "undo", label: tr("palette.undo"), hint: "Ctrl+Z", icon: Undo2, run: undo },
     { id: "shortcuts", label: tr("palette.shortcuts"), hint: "?", icon: Keyboard, run: () => setShowShortcuts(true) },
     { id: "home", label: tr("palette.home"), icon: ArrowLeft, run: () => navigate("/") },
@@ -2671,68 +2088,11 @@ function EditorInner() {
 
   /* ---------------- keyboard ---------------- */
 
-  useEffect(() => {
-    const onKey = (e) => {
-      const el = e.target;
-      const tag = (el.tagName || "").toLowerCase();
-      const typing = tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable;
-      const mod = e.ctrlKey || e.metaKey;
-      // Клавишу берём по физической позиции: на кириллице e.key — «и», а не "b".
-      const key = hotkey(e);
-
-      if (mod && key === "k") {
-        e.preventDefault();
-        setShowPalette((v) => !v);
-        return;
-      }
-      if (e.key === "Escape") {
-        // Esc уже закрыл верхнюю шторку — остальное не трогаем.
-        if (e.defaultPrevented) return;
-        if (showPalette || showShortcuts) { setShowPalette(false); setShowShortcuts(false); return; }
-        closeAll();
-        return;
-      }
-      if (mod && key === "f") {
-        e.preventDefault();
-        // Поиск живёт в боковой панели — свёрнутую раскрываем заодно.
-        setSidebar((s) => ({ ...s, open: true }));
-        setTimeout(() => searchRef.current?.focus(), 0);
-        return;
-      }
-      if (mod && key === "z" && !typing) {
-        e.preventDefault();
-        undo();
-        return;
-      }
-      if (typing || showPalette) return;
-      if (mod && key === "d") {
-        e.preventDefault();
-        // Узлы спрашиваем у React Flow, а не держим их в зависимостях эффекта:
-        // иначе слушатель клавиш переподписывался бы на каждый кадр переноса
-        // карточки по холсту.
-        duplicateNode(selectedNode || rf.getNodes().find((n) => n.selected)?.data);
-        return;
-      }
-      if (mod && key === "c") { e.preventDefault(); copyNodes(); return; }
-      if (mod && key === "v") { e.preventDefault(); pasteNodes(); return; }
-      // Создание узлов — под Ctrl: голые N и цифры мешали печатать в холсте
-      // и срабатывали случайно.
-      if (mod && key === "n") { e.preventDefault(); addNode("note"); return; }
-      if (mod && /^[1-9]$/.test(key)) {
-        const t = (settings?.nodeTypes || [])[Number(key) - 1];
-        if (t) { e.preventDefault(); addNode(t.id); }
-        return;
-      }
-      if (mod) return;
-      if (key === "g") { e.preventDefault(); setFocusMode((v) => !v); }
-      else if (key === "f") { e.preventDefault(); rf.fitView({ padding: 0.2, duration: 400 }); }
-      else if (key === "l") { e.preventDefault(); runLayout("layered"); }
-      else if (e.key === "?" || (e.shiftKey && e.key === "/")) { e.preventDefault(); setShowShortcuts((v) => !v); }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [selectedNode, duplicateNode, addNode, runLayout, rf, settings, undo, closeAll,
-      showPalette, showShortcuts, copyNodes, pasteNodes]);
+  useEditorHotkeys({
+    addNode, closeAll, copyNodes, duplicateNode, pasteNodes, rf, runLayout, searchRef,
+    selectedNode, setFocusMode, setShowPalette, setShowShortcuts, setSidebar, settings,
+    showPalette, showShortcuts, undo,
+  });
 
   // Скелетон вместо спиннера: спиннер сообщает «ждите», скелетон — «уже почти».
   if (!project) {
@@ -2812,16 +2172,7 @@ function EditorInner() {
       id: "more-export",
       label: tr("editor.export"),
       icon: Download,
-      items: [
-        { id: "more-export-json", label: tr("editor.exportJson"), icon: FileJson, onSelect: () => exportAs("json") },
-        { id: "more-export-md", label: tr("editor.exportMd"), icon: FileTextIcon, onSelect: () => exportAs("md") },
-        { id: "sep-more-export", separator: true },
-        { id: "more-export-html", label: tr("editor.exportHtml"), icon: BookOpen, onSelect: () => exportAs("html") },
-        { id: "more-export-pdf", label: tr("editor.exportPdf"), icon: Printer, onSelect: () => exportAs("pdf") },
-        { id: "sep-more-export2", separator: true },
-        { id: "more-export-png", label: tr("editor.exportPng"), icon: ImageIcon, onSelect: () => exportAs("png") },
-        { id: "more-export-svg", label: tr("editor.exportSvg"), icon: ImageIcon, onSelect: () => exportAs("svg") },
-      ],
+      items: exportMenuItems(tr, exportAs, "more-export"),
     },
     { id: "sep-more2", separator: true },
     { id: "more-shortcuts", label: tr("palette.shortcuts"), icon: Keyboard, hint: "?", onSelect: () => setShowShortcuts(true) },
@@ -2867,12 +2218,9 @@ function EditorInner() {
       id: "m-export",
       label: tr("mobile.share"),
       icon: Download,
-      items: [
-        { id: "m-export-json", label: tr("editor.exportJson"), icon: FileJson, onSelect: () => exportAs("json") },
-        { id: "m-export-md", label: tr("editor.exportMd"), icon: FileTextIcon, onSelect: () => exportAs("md") },
-        { id: "m-export-html", label: tr("editor.exportHtml"), icon: BookOpen, onSelect: () => exportAs("html") },
-        { id: "m-export-png", label: tr("editor.exportPng"), icon: ImageIcon, onSelect: () => exportAs("png") },
-      ],
+      // PDF и SVG на телефоне не предлагаем: печати в WebView нет, а SVG
+      // там нечем открыть.
+      items: exportMenuItems(tr, exportAs, "m-export", ["json", "md", "html", "png"]),
     },
     { id: "m-settings", label: tr("ctx.settings"), icon: Settings, onSelect: () => { closeAll(); setShowSettings(true); } },
   ];
