@@ -11,7 +11,7 @@ import {
 import { toast } from "sonner";
 import {
   ArrowLeft, Settings, Plus, Search, Network,
-  Layers, CalendarRange, X, Command, Download, Wand2, Keyboard, Maximize2,
+  Layers, CalendarRange, X, Download, Wand2, Keyboard, Maximize2,
   ChevronDown, ChevronUp, Minus, FileJson, FileText as FileTextIcon, Undo2,
   Link2, Unlink, Crosshair, Target, ArrowLeftRight, Pencil, Copy, Trash2,
   SquareDashedMousePointer, Spline, Waypoints, Scissors, Shapes,
@@ -1872,9 +1872,10 @@ function EditorInner() {
       // Общий — это значение по умолчанию, а не приговор всему холсту: узел,
       // на который смотрят подробно, не обязан тащить за собой остальные.
       const cardMode = d.cardMode || v.cardMode;
-      // Страница узла нужна лишь там, где страниц больше одной: иначе это
-      // подпись «Основной» на каждой карточке проекта.
-      const canvasLabel = v.canvases.length > 1
+      // Страница узла — только если она не та, что сейчас открыта. На холсте
+      // лежат узлы этого же холста, и подпись «Campaign» внизу каждой
+      // карточки на холсте Campaign повторяла заголовок верхней панели.
+      const canvasLabel = v.canvases.length > 1 && !onCanvas
         ? v.canvases.find((c) => c.id === (d.canvas || v.mainCanvasId))?.label || ""
         : "";
 
@@ -2141,61 +2142,50 @@ function EditorInner() {
     });
   }, [sidebar.collapsed, addNode, toggleTreeGroup, closeAll]);
 
-  /* ---------------- canvas tabs ---------------- */
+  /* ---------------- холсты в верхней панели ---------------- */
 
-  // Полоска холстов есть и в боковой панели, и плавающая над холстом, когда
-  // панель свёрнута. Вкладку рисуем одним кодом, иначе переименование пришлось
-  // бы поддерживать в двух местах.
-  const canvasTab = (c, testId) => {
-    if (renamingCanvas?.id === c.id) {
-      return (
-        <TextField
-          key={c.id}
-          data-testid={`${testId}-rename`}
-          autoFocus
-          value={renamingCanvas.label}
-          onChange={(e) => setRenamingCanvas({ id: c.id, label: e.target.value })}
-          onFocus={(e) => e.target.select()}
-          onBlur={commitCanvasName}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); commitCanvasName(); }
-            // stopPropagation: иначе Esc дойдёт до общего обработчика и закроет
-            // заодно все панели редактора.
-            if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setRenamingCanvas(null); }
-          }}
-          className="px-2 py-1 rounded-md text-xs bg-transparent border sw-border-c outline-none w-28 shrink-0"
-        />
-      );
-    }
-    return (
-      <button
-        key={c.id}
-        data-testid={testId}
-        data-active={c.id === activeCanvas}
-        onClick={() => setCurrentCanvas(c.id)}
-        onDoubleClick={() => setRenamingCanvas({ id: c.id, label: c.label })}
-        // Вкладка холста ведёт на холст и из таймлайна: выбрали страницу —
-        // значит, хотят её видеть.
-        onClickCapture={() => setShowTimeline(false)}
-        title={tr("editor.renameCanvasHint")}
-        // Выбранный холст — поверхность и точка акцента, а не заливка целиком:
-        // сплошной акцент кричит громче, чем стоит переключатель вкладок.
-        className="flex items-center gap-1.5 px-2.5 h-7 rounded-md text-xs whitespace-nowrap
-          transition-colors shrink-0 sw-hover"
-        style={{
-          background: c.id === activeCanvas ? "var(--sw-surface-2)" : "transparent",
-          color: c.id === activeCanvas ? "var(--sw-text)" : "var(--sw-text-dim)",
-        }}
-      >
-        <span
-          className="sw-tab-dot w-1.5 h-1.5 rounded-full shrink-0"
-          style={{ background: c.id === activeCanvas ? "var(--sw-accent)" : "var(--sw-border-strong)" }}
-        />
-        {c.label}
-        {canvasUsage[c.id] ? <span className="ml-1.5 opacity-60 font-mono-sw">{canvasUsage[c.id]}</span> : null}
-      </button>
-    );
+  // Холсты — кнопка «Холст ▾» в верхней панели и список под ней. Полоса
+  // вкладок на девяти страницах обрывалась на третьей; список показывает все
+  // сразу, с числом узлов, и там же — переименовать и завести новую.
+  const activeCanvasObj = canvases.find((c) => c.id === activeCanvas) || canvases[0];
+  const startCanvasRename = () => {
+    if (activeCanvasObj) setRenamingCanvas({ id: activeCanvasObj.id, label: activeCanvasObj.label });
   };
+  const canvasRenameField = renamingCanvas ? (
+    <TextField
+      data-testid="canvas-rename-input"
+      autoFocus
+      value={renamingCanvas.label}
+      onChange={(e) => setRenamingCanvas((r) => ({ ...r, label: e.target.value }))}
+      onFocus={(e) => e.target.select()}
+      onBlur={commitCanvasName}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") { e.preventDefault(); commitCanvasName(); }
+        // stopPropagation: иначе Esc дойдёт до общего обработчика и закроет
+        // заодно все панели редактора.
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setRenamingCanvas(null); }
+      }}
+      className="px-2 py-1 rounded-md text-xs bg-transparent border sw-border-c outline-none w-36 shrink-0"
+    />
+  ) : null;
+  const openCanvasMenu = ({ x, y }) => setMenu({
+    x,
+    y,
+    items: [
+      { id: "canvases-title", title: tr("settings.canvases") },
+      ...canvases.map((c) => ({
+        id: `canvas-${c.id}`,
+        label: c.label,
+        checked: c.id === activeCanvas,
+        hint: canvasUsage[c.id] ? String(canvasUsage[c.id]) : undefined,
+        // Выбрали страницу — значит, хотят её видеть, даже из таймлайна.
+        onSelect: () => { setCurrentCanvas(c.id); setShowTimeline(false); },
+      })),
+      { id: "sep-canvases", separator: true },
+      { id: "canvas-rename", label: tr("editor.renameCanvas"), icon: Pencil, onSelect: startCanvasRename },
+      { id: "canvas-new", label: tr("editor.newCanvas"), icon: Plus, onSelect: addCanvas },
+    ],
+  });
 
   /* ---------------- right-click menus ---------------- */
 
@@ -2439,15 +2429,18 @@ function EditorInner() {
             { id: "make-type", label: tr("ctx.newType"), icon: Shapes, onSelect: createNodeType },
           ],
         },
-        {
+        // Недоступное не показываем серым, а не показываем вовсе: два
+        // погашенных пункта в каждом меню учили их не читать.
+        ...(clipboardRef.current?.nodes?.length ? [{
           id: "paste",
           label: tr("ctx.paste"),
           icon: ClipboardPaste,
           hint: "Ctrl V",
-          disabled: !clipboardRef.current?.nodes?.length,
           onSelect: pasteNodes,
-        },
-        { id: "undo", label: tr("palette.undo"), icon: Undo2, hint: "Ctrl Z", disabled: !undoRef.current.length, onSelect: undo },
+        }] : []),
+        ...(undoRef.current.length ? [{
+          id: "undo", label: tr("palette.undo"), icon: Undo2, hint: "Ctrl Z", onSelect: undo,
+        }] : []),
         { id: "sep-pane", separator: true },
         {
           id: "layout",
@@ -2465,12 +2458,8 @@ function EditorInner() {
           onSelect: () => changeSettings({ ...settings, showMiniMap: settings.showMiniMap === false }),
         }]),
         { id: "select-all", label: tr("ctx.selectAll"), icon: SquareDashedMousePointer, onSelect: selectAllVisible },
-        { id: "sep-pane2", separator: true },
-        { id: "new-canvas", label: tr("editor.newCanvas"), icon: Layers, onSelect: addCanvas },
-        { id: "timeline", label: tr("editor.timeline"), icon: CalendarRange, onSelect: () => { closeAll(); setShowTimeline(true); } },
-        { id: "sep-pane3", separator: true },
-        { id: "palette", label: tr("ctx.commandPalette"), icon: Command, hint: "Ctrl K", onSelect: () => setShowPalette(true) },
-        { id: "settings", label: tr("ctx.settings"), icon: Settings, onSelect: () => { closeAll(); setShowSettings(true); } },
+        // Новый холст, таймлайн, палитра и настройки стоят в верхней панели
+        // на виду — в меню холста они только удлиняли список вдвое.
       ], ["new-here", "paste", "layout", "fit"]),
     });
   }, [rf, typeItems, addNode, runLayout, selectAllVisible, closeAll, createNodeType,
@@ -2704,6 +2693,19 @@ function EditorInner() {
     },
     { id: "more-fit", label: tr("editor.fitView"), icon: Maximize2, hint: "F", onSelect: () => rf.fitView({ padding: 0.2, duration: 400 }) },
     { id: "more-focus", label: tr("editor.focusMode"), icon: Crosshair, hint: "G", checked: focusMode, onSelect: () => setFocusMode((v) => !v) },
+    // Вид карточек — здесь, а не иконками в центре верхней панели: его
+    // выбирают раз на проект, а две иконки без подписей были загадкой.
+    {
+      id: "more-cards",
+      label: tr("ctx.cardMode"),
+      icon: LayoutGrid,
+      items: ["detailed", "compact"].map((mode) => ({
+        id: `more-cards-${mode}`,
+        label: tr(`settings.cardStyles.${mode}`),
+        checked: (settings.cardMode || "detailed") === mode,
+        onSelect: () => changeSettings({ ...settings, cardMode: mode }),
+      })),
+    },
     {
       id: "more-minimap",
       label: tr("settings.showMiniMap"),
@@ -2810,16 +2812,15 @@ function EditorInner() {
         sidebarOpen={sidebar.open}
         onToggleSidebar={() => setSidebar((s) => ({ ...s, open: !s.open }))}
         onBack={() => navigate("/")}
-        canvases={canvases}
-        activeCanvas={activeCanvas}
-        renderCanvasTab={canvasTab}
-        onAddCanvas={addCanvas}
+        canvasLabel={activeCanvasObj?.label || ""}
+        canvasCount={canvasUsage[activeCanvas] || 0}
+        canvasRename={canvasRenameField}
+        onOpenCanvases={openCanvasMenu}
+        onRenameCanvas={startCanvasRename}
         view={showTimeline ? "timeline" : "canvas"}
         onView={(v) => {
           if (v === "timeline") { closeAll(); setShowTimeline(true); } else setShowTimeline(false);
         }}
-        cardMode={settings?.cardMode || "detailed"}
-        onCardMode={(id) => changeSettings({ ...settings, cardMode: id })}
         onOpenPalette={() => setShowPalette(true)}
         onOpenCreate={({ x, y }) => setMenu({ x, y, items: createMenuItems })}
         onOpenSettings={() => { closeAll(); setShowSettings(true); }}

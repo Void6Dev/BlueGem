@@ -65,6 +65,7 @@ export default function NodeEditorPanel({
   const [draft, setDraft] = useState(null);
   const [seenType, setSeenType] = useState(null);
   const [typeOpen, setTypeOpen] = useState(false);
+  const [urlOpen, setUrlOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkQuery, setLinkQuery] = useState("");
   const [tagInput, setTagInput] = useState("");
@@ -354,6 +355,29 @@ export default function NodeEditorPanel({
 
   const statusLabel = tr(`node.status.${status}`);
 
+  // Выбор типа — один и тот же список в шапке (компьютер) и в «Подробнее»
+  // (телефон).
+  const typePicker = (
+            <div className="mt-1.5 grid grid-cols-2 gap-1 p-1 rounded-lg border sw-border-c sw-surface" data-testid="node-type-picker">
+              {nodeTypes.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  data-testid={`node-type-option-${t.id}`}
+                  onClick={() => pickType(t.id)}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-left sw-hover
+                    ${t.id === draft.typeId ? "bg-[var(--sw-hover)]" : ""}`}
+                >
+                  <span className="w-4 h-4 rounded flex items-center justify-center shrink-0" style={{ background: t.color }}>
+                    <NodeIcon name={t.icon} className="w-2.5 h-2.5 text-white" />
+                  </span>
+                  <span className="truncate flex-1">{t.label}</span>
+                  {t.id === draft.typeId && <Check className="w-3 h-3 sw-accent-text shrink-0" />}
+                </button>
+              ))}
+            </div>
+  );
+
   return (
     <DockShell
       onClose={onClose}
@@ -410,7 +434,21 @@ export default function NodeEditorPanel({
           <span className="sw-node-badge-icon is-lg">
             <NodeIcon name={activeType?.icon} className="text-white" />
           </span>
-          <span className="sw-node-type">{activeType?.label || tr("node.noType")}</span>
+          {/* Тип меняют прямо здесь: раньше ниже стояло отдельное поле «Тип»
+              с тем же значком и тем же названием — шапка и поле повторяли
+              друг друга. */}
+          <button
+            type="button"
+            data-testid="node-current-type"
+            onClick={() => setTypeOpen((v) => !v)}
+            aria-expanded={typeOpen}
+            title={tr("node.changeType")}
+            className="sw-type-trigger"
+          >
+            <span className="sw-node-type">{activeType?.label || tr("node.noType")}</span>
+            <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${typeOpen ? "rotate-180" : ""}`} />
+          </button>
+          <span className="flex-1" />
           <button onClick={onClose} data-testid="close-editor-btn" className="p-1.5 rounded-md sw-hover shrink-0" title={tr("node.close")}>
             <X className="w-4 h-4" />
           </button>
@@ -428,6 +466,7 @@ export default function NodeEditorPanel({
             className="sw-panel-title bg-transparent border-0 px-0"
           />
         </div>
+        {typeOpen && <div className="mt-2">{typePicker}</div>}
       </div>
       )}
 
@@ -439,7 +478,7 @@ export default function NodeEditorPanel({
         ref={scrollRef}
         className={mobile
           ? `flex-1 sw-scroll-y sw-npage-body ${details ? "is-details" : ""}`
-          : "flex-1 sw-scroll-y px-6 py-6 space-y-6"}
+          : "flex-1 sw-scroll-y px-6 py-5 sw-npanel"}
       >
         {/* Телефон: тип, даты, страница, картинка и характеристики — под
             «Подробнее». На странице узла первым делом текст и связи. */}
@@ -452,6 +491,7 @@ export default function NodeEditorPanel({
         {/* Тип выбирается здесь же. Раньше поле только выглядело выбором, а
             под ним стояла подсказка идти на холст и искать пункт в меню узла —
             поле, которое нельзя нажать, хуже, чем поле, которого нет. */}
+        {mobile && (
         <div className="sw-sec sw-sec-type">
           <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("common.type")}</label>
           <button
@@ -472,27 +512,9 @@ export default function NodeEditorPanel({
             <span className="text-sm flex-1 truncate">{activeType?.label || tr("node.noType")}</span>
             <ChevronDown className={`w-3.5 h-3.5 sw-text-dim shrink-0 transition-transform ${typeOpen ? "rotate-180" : ""}`} />
           </button>
-          {typeOpen && (
-            <div className="mt-1.5 grid grid-cols-2 gap-1 p-1 rounded-lg border sw-border-c sw-surface" data-testid="node-type-picker">
-              {nodeTypes.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  data-testid={`node-type-option-${t.id}`}
-                  onClick={() => pickType(t.id)}
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-left sw-hover
-                    ${t.id === draft.typeId ? "bg-[var(--sw-hover)]" : ""}`}
-                >
-                  <span className="w-4 h-4 rounded flex items-center justify-center shrink-0" style={{ background: t.color }}>
-                    <NodeIcon name={t.icon} className="w-2.5 h-2.5 text-white" />
-                  </span>
-                  <span className="truncate flex-1">{t.label}</span>
-                  {t.id === draft.typeId && <Check className="w-3 h-3 sw-accent-text shrink-0" />}
-                </button>
-              ))}
-            </div>
-          )}
+          {typeOpen && typePicker}
         </div>
+        )}
 
         {/* Даты узла — их может быть несколько — и холст, на котором он лежит. */}
         <div className="sw-sec sw-sec-dates">
@@ -582,9 +604,11 @@ export default function NodeEditorPanel({
             </div>
           )}
           {!mobile && (
+          // Подсказка про разметку нужна, пока текста нет: дальше она
+          // висела под каждым описанием строкой, которую уже никто не читает.
           <p className="mt-1.5 text-[11px] sw-text-dim flex items-center justify-between gap-2">
-            <span>{tr("node.markdownHint", { code: `[[${tr("edge.node")}]]` })}</span>
-            <span className="font-mono-sw shrink-0">{(draft.description || "").length}</span>
+            <span>{draft.description ? "" : tr("node.markdownHint", { code: `[[${tr("edge.node")}]]` })}</span>
+            <span className="font-mono-sw shrink-0">{(draft.description || "").length || ""}</span>
           </p>
           )}
         </div>
@@ -696,23 +720,40 @@ export default function NodeEditorPanel({
               </button>
             </div>
           ) : (
+            // Пустое изображение — одна строка: «загрузить» и «по ссылке».
+            // Раньше это был блок в сотню пикселей и поле под ним, и он
+            // стоял у каждого узла, хотя картинка есть у немногих.
             <div className="mt-2 space-y-2">
-              <button
-                data-testid="upload-image-btn"
-                onClick={() => fileRef.current?.click()}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => { e.preventDefault(); readImage(e.dataTransfer.files?.[0]); }}
-                className="w-full flex items-center justify-center gap-2 py-6 rounded-lg border border-dashed sw-border-c text-sm sw-text-dim sw-hover"
-              >
-                <ImagePlus className="w-4 h-4" /> {tr("node.upload")}
-              </button>
-              <Input
-                data-testid="image-url-input"
-                value={draft.image}
-                onChange={(e) => set({ image: e.target.value })}
-                placeholder={tr("node.imageUrl")}
-                className="bg-transparent sw-border-c text-xs h-9"
-              />
+              <div className="flex items-center gap-2">
+                <button
+                  data-testid="upload-image-btn"
+                  onClick={() => fileRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => { e.preventDefault(); readImage(e.dataTransfer.files?.[0]); }}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg border border-dashed sw-border-c text-xs sw-text-dim sw-hover"
+                >
+                  <ImagePlus className="w-3.5 h-3.5" /> {tr("node.upload")}
+                </button>
+                <button
+                  type="button"
+                  data-testid="image-url-toggle"
+                  onClick={() => setUrlOpen((v) => !v)}
+                  aria-pressed={urlOpen}
+                  className="px-3 py-2.5 rounded-lg border sw-border-c text-xs sw-text-dim sw-hover shrink-0"
+                >
+                  {tr("node.imageByUrl")}
+                </button>
+              </div>
+              {urlOpen && (
+                <Input
+                  autoFocus
+                  data-testid="image-url-input"
+                  value={draft.image}
+                  onChange={(e) => set({ image: e.target.value })}
+                  placeholder={tr("node.imageUrl")}
+                  className="bg-transparent sw-border-c text-xs h-9"
+                />
+              )}
             </div>
           )}
           <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} className="hidden" />

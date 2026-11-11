@@ -602,6 +602,36 @@ kbd {
   flex-shrink: 0;
   padding-left: 2px;
 }
+/* «Проект / Холст ▾» — путь вместо полосы вкладок. Косая черта тише имени. */
+.sw-topbar-crumb { color: var(--sw-text-mute); font-size: 15px; flex-shrink: 0; margin: 0 -2px; }
+.sw-canvas-switch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  min-width: 0;
+  max-width: 240px;
+  padding: 0 8px 0 9px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sw-text);
+  transition: background-color 0.14s var(--sw-ease);
+}
+.sw-canvas-switch:hover { background: var(--sw-hover); }
+.sw-canvas-switch-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--sw-accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--sw-accent) 70%, transparent);
+}
+.sw-canvas-switch-count {
+  font-family: var(--sw-font-mono);
+  font-size: 11px;
+  color: var(--sw-text-mute);
+}
 .sw-topbar-sep { width: 1px; height: 18px; background: var(--sw-border); flex-shrink: 0; margin: 0 2px; }
 .sw-topbar-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 0 1 auto; }
 .sw-topbar-search {
@@ -1810,6 +1840,41 @@ kbd {
 }
 .sw-tree-newtype:hover { background: var(--sw-hover); color: var(--sw-text); }
 /* Фильтр по тегам: плотные пилюли, выбранная — акцентом. */
+/* Кнопка фильтра по тегам рядом с охватом дерева: размер и форма — как у
+   сегмента рядом, включённая — заливка акцентом. */
+.sw-tagfilter-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0 7px;
+  border-radius: 9px;
+  background: var(--sw-surface-2);
+  color: var(--sw-text-dim);
+  transition: background-color 0.16s var(--sw-ease), color 0.16s var(--sw-ease);
+}
+.sw-tagfilter-btn:hover { color: var(--sw-text); }
+.sw-tagfilter-btn[aria-pressed="true"] { color: var(--sw-text); background: var(--sw-surface-3); }
+.sw-tagfilter-count {
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+}
+/* Ряд тегов выезжает из-под кнопки, а не появляется скачком. */
+.sw-tagfilter-bar { animation: swTagsIn 0.28s var(--sw-ease-emph) both; transform-origin: top; }
+@keyframes swTagsIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
 .sw-tag-chip {
   font-size: 11px;
   line-height: 18px;
@@ -1969,6 +2034,54 @@ kbd {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Панель узла на компьютере. Порядок — по частоте: сначала свойства
+   короткими строками (дата, холст), потом текст и связи, теги и поля, а
+   изображение в конце — оно есть у немногих узлов. Раньше каждое свойство
+   было отдельной секцией с крупной меткой капителью и полем во всю ширину,
+   и до описания приходилось листать. */
+.sw-npanel { display: flex; flex-direction: column; gap: 22px; }
+.sw-npanel > .sw-sec-dates { order: 1; }
+.sw-npanel > .sw-sec-canvas { order: 2; margin-top: -12px; }
+.sw-npanel > .sw-sec-desc { order: 3; }
+.sw-npanel > .sw-sec-links { order: 4; }
+.sw-npanel > .sw-sec-tags { order: 5; }
+.sw-npanel > .sw-sec-fields { order: 6; }
+.sw-npanel > .sw-sec-image { order: 7; }
+/* Свойство — строка «метка · значение», а не секция. */
+.sw-npanel > .sw-sec-dates,
+.sw-npanel > .sw-sec-canvas {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 12px;
+}
+.sw-npanel > .sw-sec-dates > label,
+.sw-npanel > .sw-sec-canvas > label {
+  padding-top: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--sw-text-mute);
+}
+.sw-npanel > .sw-sec-dates > .mt-2,
+.sw-npanel > .sw-sec-canvas > select { margin-top: 0; }
+.sw-npanel > .sw-sec-canvas > select { height: 30px; }
+
+/* Тип в шапке панели — кнопка: название типа и шеврон. */
+.sw-type-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: -4px;
+  padding: 2px 6px 2px 4px;
+  border-radius: 6px;
+  color: var(--node-color, var(--sw-text-dim));
+  transition: background-color 0.14s var(--sw-ease);
+}
+.sw-type-trigger:hover,
+.sw-type-trigger[aria-expanded="true"] { background: color-mix(in srgb, var(--node-color, var(--sw-accent)) 12%, transparent); }
 
 /* Ползунок, который переезжает к активному полю в редакторе узла. */
 .sw-field-rail {
