@@ -9,7 +9,8 @@ import { Toaster } from "sonner";
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Editor = lazy(() => import("@/pages/Editor"));
 import { isDesktop, onLanguage, onMenuCommand, onOpenProject, takePendingProject } from "@/lib/desktop";
-import { openProjectText } from "@/lib/openProject";
+import { openProjectText, openResultMessage } from "@/lib/openProject";
+import { folderSync } from "@/lib/sync/folderSync";
 import { setLanguage, t, useT } from "@/lib/i18n";
 import {
   initNative, isNative, readSharedFile, setBackFallback, useIsMobile,
@@ -65,14 +66,16 @@ function DesktopBridge() {
       try {
         const result = await openProjectText(content);
         if (!result) return;
-        toast.success(t(result.action === "imported"
-          ? "dashboard.toasts.imported"
-          : "dashboard.toasts.opened", { name: result.name }));
+        toast.success(openResultMessage(result));
         navigate(`/project/${result.id}`);
       } catch (e) {
         toast.error(`${path ? `${path}: ` : ""}${e.message || t("errors.openFile")}`);
       }
     };
+
+    // Папка синхронизации: менеджер живёт всё время работы приложения, а
+    // не только на главной, — правки из редактора тоже должны уходить.
+    folderSync()?.start().catch(() => {});
 
     const offOpen = onOpenProject(accept);
     const offMenu = onMenuCommand((command) => {
@@ -126,9 +129,7 @@ function NativeBridge() {
         const text = await readSharedFile(url);
         const result = await openProjectText(text);
         if (!result || !alive) return;
-        toast.success(t(result.action === "imported"
-          ? "dashboard.toasts.imported"
-          : "dashboard.toasts.opened", { name: result.name }));
+        toast.success(openResultMessage(result));
         navigate(`/project/${result.id}`);
       } catch (e) {
         toast.error(e?.message || t("errors.openFile"));

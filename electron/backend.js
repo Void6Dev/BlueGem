@@ -15,6 +15,7 @@ const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
 const path = require("node:path");
+const { app } = require("electron");
 
 const log = require("./logger");
 const { t } = require("./i18n");
@@ -120,6 +121,8 @@ class Backend {
       BG_HOST: HOST,
       BG_PORT: String(port),
       BG_TOKEN: this.token,
+      // Версия для /api/ — та же, что у приложения, а не вписанная руками.
+      BG_VERSION: app.getVersion(),
       SQLITE_PATH: path.join(this.dataDir, "bluegem.db"),
       BG_LOG: path.join(this.logDir, "backend.log"),
       // Интерфейс отдаёт сам сервер — один origin, никаких CORS и портов в коде.

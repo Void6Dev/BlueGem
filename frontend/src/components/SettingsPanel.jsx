@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import {
   X, Plus, Trash2, Sun, Moon, Check, ChevronUp, ChevronDown, Layers, Languages,
-  FolderOpen, Palette, Share2, Shapes, Link2, CalendarRange,
+  FolderOpen, Palette, Share2, Shapes, Link2, CalendarRange, History,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,6 +23,7 @@ import { useBackHandler } from "@/lib/platform";
 import { scrollWithin } from "@/lib/scrollWithin";
 import CalendarEditor from "@/components/chrono/CalendarEditor";
 import EraEditor from "@/components/chrono/EraEditor";
+import BackupsSection from "@/components/BackupsSection";
 
 /**
  * Поле «добавить подсказку». Своё состояние здесь, а не в панели: иначе один
@@ -64,7 +65,7 @@ let lastSection = "project";
 
 export default function SettingsPanel({
   settings, onChange, onClose, project, onProjectChange, typeUsage = {}, canvasUsage = {},
-  relUsage = {}, highlightType, onHighlighted,
+  relUsage = {}, highlightType, onHighlighted, onRestored,
 }) {
   const t = useT();
   // «Назад» на телефоне закрывает окно настроек, а не уходит со страницы.
@@ -230,6 +231,7 @@ export default function SettingsPanel({
     { id: "types", icon: Shapes, label: t("settings.nodeTypes") },
     { id: "relations", icon: Link2, label: t("settings.sectionRelations") },
     { id: "chronology", icon: CalendarRange, label: t("settings.sectionChronology") },
+    ...(project?.id ? [{ id: "backups", icon: History, label: t("settings.sectionBackups") }] : []),
   ];
   const current = sections.find((x) => x.id === section) || sections[0];
 
@@ -616,6 +618,7 @@ export default function SettingsPanel({
     types: renderTypes,
     relations: renderRelations,
     chronology: renderChronology,
+    backups: () => <BackupsSection projectId={project.id} onRestored={onRestored} />,
   };
 
   // Окно — порталом в body: внутри рабочей области у предков есть transform

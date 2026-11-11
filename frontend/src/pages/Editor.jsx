@@ -26,6 +26,8 @@ import { hotkey } from "@/lib/hotkey";
 import { LAYOUTS } from "@/lib/layout";
 import { pushEntry } from "@/lib/history";
 import { downloadJson, downloadMarkdown } from "@/lib/exporters";
+import { nodeBody } from "@/lib/search";
+import { backlinksOf } from "@/lib/backlinks";
 import CustomNode, { FAR_ZOOM } from "@/components/CustomNode";
 import NodePreview from "@/components/NodePreview";
 import EditorTopBar from "@/components/EditorTopBar";
@@ -417,6 +419,27 @@ function EditorInner() {
   const paneRef = useRef(null);
   const searchRef = useRef(null);
   const undoRef = useRef([]);
+  // Проект подменили целиком (возврат к копии, синхронизация) — перечитываем
+  // его, а история отмены прежних правок к новому содержимому уже не подходит.
+  const [reloadKey, setReloadKey] = useState(0);
+  const reloadProject = useCallback(() => {
+    undoRef.current = [];
+    setSelectedNode(null);
+    setPanelOpen(false);
+    setReloadKey((k) => k + 1);
+  }, []);
+
+  // Этот же проект обновился с другого устройства (папка синхронизации).
+  useEffect(() => {
+    const onReplaced = (e) => {
+      if (e.detail?.projectId !== id) return;
+      reloadProject();
+      const s = e.detail.stats || {};
+      toast.message(tr("sync.replaced", { added: s.added || 0, updated: s.updated || 0, removed: s.removed || 0 }));
+    };
+    window.addEventListener("bluegem:project-replaced", onReplaced);
+    return () => window.removeEventListener("bluegem:project-replaced", onReplaced);
+  }, [id, reloadProject, tr]);
   const visitedRef = useRef(false);   // по совпадениям поиска уже ходили?
   const projectSaveRef = useRef(null);
 
@@ -517,7 +540,7 @@ function EditorInner() {
     // Leaving the editor: fall back to the remembered global appearance.
     return () => applyStoredAppearance();
     // eslint-disable-next-line
-  }, [id]);
+  }, [id, reloadKey]);
 
   // Панели подтягиваем, когда основному потоку нечем заняться: к первому
   // открытию они уже здесь, а к показу холста не имеют отношения.
@@ -2000,6 +2023,14 @@ function EditorInner() {
     return out;
   }, [nodeFacts]);
 
+  // Кто упоминает выбранный узел через [[ссылку]] в описании или
+  // характеристиках. Только пока панель открыта: проход по всем узлам на
+  // каждую правку ради закрытой панели не нужен.
+  const mentions = useMemo(() => {
+    if (!selectedNode || !panelOpen) return EMPTY_LIST;
+    return backlinksOf({ id: selectedNode.id, title: nodeTitles[selectedNode.id] ?? selectedNode.title }, nodeContent);
+  }, [selectedNode, panelOpen, nodeTitles, nodeContent]);
+
   const connections = useMemo(() => {
     if (!selectedNode) return [];
     return rfEdges
@@ -2563,9 +2594,10 @@ function EditorInner() {
 
   // Как и allNodesForPicker: пока палитра закрыта, её список не нужен никому,
   // а стоит он объекта и замыкания на каждый узел проекта — на каждую правку.
-  const paletteNodes = useMemo(() => (showPalette ? nodeFacts.map((d) => ({
+  const paletteNodes = useMemo(() => (showPalette ? nodeContent.map((d) => ({
     id: d.id,
     title: d.title || tr("common.untitled"),
+    body: nodeBody(d),
     subtitle: [typesById[d.typeId]?.label, ...(d.tags || []).map((t) => `#${t}`)]
       .filter(Boolean).join(" · "),
     color: d.nodeType?.color,
@@ -2573,7 +2605,7 @@ function EditorInner() {
     run: () => openNodeById(d.id),
   })) : EMPTY_LIST),
   // eslint-disable-next-line
-  [showPalette, nodeFacts, typesById, openNodeById]);
+  [showPalette, nodeContent, typesById, openNodeById]);
 
   /* ---------------- keyboard ---------------- */
 
@@ -3352,6 +3384,7 @@ function EditorInner() {
             eras={eras}
             allTags={allTags}
             connections={connections}
+            mentions={mentions}
             onOpenNode={openNodeById}
             onCreateNode={(title) => addNode("note", undefined, { title })}
             canvases={canvases}
@@ -3415,6 +3448,7 @@ function EditorInner() {
             relUsage={relUsage}
             highlightType={highlightType}
             onHighlighted={() => setHighlightType(null)}
+            onRestored={reloadProject}
             onChange={changeSettings}
             onClose={() => { setShowSettings(false); setHighlightType(null); }}
           />

@@ -12,6 +12,9 @@ export const isDesktop = Boolean(bridge && bridge.isDesktop);
 
 export const appVersion = bridge?.version || "";
 
+/** Папка синхронизации (electron/sync.js); null вне десктопной оболочки. */
+export const folderBridge = isDesktop && bridge.sync ? bridge.sync : null;
+
 /** Адрес встроенного сервера. Пусто — значит API на том же origin. */
 export const apiBase = bridge?.apiBase || "";
 

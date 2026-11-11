@@ -41,6 +41,25 @@ contextBridge.exposeInMainWorld("bluegem", {
   /** Сообщить оболочке выбранный язык: меню и диалоги следуют за интерфейсом. */
   setLanguage: (lang) => ipcRenderer.invoke("bg:set-language", lang),
 
+  /**
+   * Папка синхронизации (см. electron/sync.js): файлы *.bgproj прямо в ней.
+   * state()  — { folder, available };
+   * choose() — выбрать папку системным диалогом;
+   * list()   — [{ name, mtimeMs, size }];
+   * onChanged(handler) — в папке что-то поменялось (с задержкой ~1 с).
+   */
+  sync: {
+    state: () => ipcRenderer.invoke("bg:sync-state"),
+    choose: (options) => ipcRenderer.invoke("bg:sync-choose", options || {}),
+    disable: () => ipcRenderer.invoke("bg:sync-disable"),
+    list: () => ipcRenderer.invoke("bg:sync-list"),
+    read: (name) => ipcRenderer.invoke("bg:sync-read", name),
+    write: (name, text) => ipcRenderer.invoke("bg:sync-write", name, text),
+    trash: (name) => ipcRenderer.invoke("bg:sync-trash", name),
+    reveal: () => ipcRenderer.invoke("bg:sync-reveal"),
+    onChanged: (handler) => subscribe("bg:sync-changed", handler),
+  },
+
   /** Проект, открытый через «Открыть…» или ассоциацию файлов. */
   onOpenProject: (handler) => subscribe("bg:open-project", handler),
   /** Команды из меню приложения: "new-project", "import-project". */

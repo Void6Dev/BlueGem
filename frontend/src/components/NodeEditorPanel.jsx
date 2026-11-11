@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import DockShell from "@/components/mobile/DockShell";
 import {
   X, Plus, Trash2, Copy, ImagePlus, Check, Loader2,
-  ArrowRight, ArrowLeft, Link2, ChevronDown, Maximize2, Minimize2, MoreHorizontal,
+  ArrowRight, ArrowLeft, Link2, ChevronDown, Maximize2, Minimize2, MoreHorizontal, Quote,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { AutoTextarea } from "@/components/ui/auto-textarea";
@@ -19,6 +19,7 @@ import { hotkey } from "@/lib/hotkey";
 import { isMobileNow, pushBack, useIsMobile } from "@/lib/platform";
 import MobileDescription from "@/components/mobile/MobileDescription";
 import { tList, useT } from "@/lib/i18n";
+import { isImageRef, useImageSrc } from "@/lib/images";
 
 const RAIL_SPRING = { type: "spring", stiffness: 420, damping: 34 };
 
@@ -56,7 +57,7 @@ const IMAGE_MAX_CHARS = 300 * 1024;
 
 export default function NodeEditorPanel({
   node, nodeTypes, onClose, onSave, onDelete, onDuplicate, onLiveChange, focusField,
-  allNodes = [], allTags = [], connections = [], onOpenNode, onCreateNode, canvases = [],
+  allNodes = [], allTags = [], connections = [], mentions = [], onOpenNode, onCreateNode, canvases = [],
   calendar, eras = [], fieldTemplates: projectFields, onChangeType, onLink, onUnlink,
   // Телефон: узел — страница. «Назад» (к прошлому узлу или к миру), меню типа и «⋯».
   onBack, onTypeMenu, onMore,
@@ -66,6 +67,7 @@ export default function NodeEditorPanel({
   const [seenType, setSeenType] = useState(null);
   const [typeOpen, setTypeOpen] = useState(false);
   const [urlOpen, setUrlOpen] = useState(false);
+  const imageSrc = useImageSrc(draft?.image || "");
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkQuery, setLinkQuery] = useState("");
   const [tagInput, setTagInput] = useState("");
@@ -705,12 +707,45 @@ export default function NodeEditorPanel({
           </div>
         </div>
 
+        {/* Обратные ссылки: где этот узел упомянут через [[название]]. Блок
+            появляется, только когда упоминания есть, — пустой заголовок
+            «нигде не упоминается» на каждом узле был бы шумом. */}
+        {mentions.length > 0 && (
+          <div className="sw-sec sw-sec-mentions" data-testid="node-mentions">
+            <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim flex items-center gap-2">
+              <Quote className="w-3 h-3" /> {tr("node.mentions")} ({mentions.length})
+            </label>
+            <div className="mt-2 space-y-1">
+              {mentions.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  data-testid={`mention-${m.id}`}
+                  onClick={() => onOpenNode && onOpenNode(m.id)}
+                  className="w-full flex items-start gap-2 px-2.5 py-1.5 rounded-lg sw-hover text-left"
+                >
+                  <span
+                    className="mt-0.5 w-4 h-4 rounded flex items-center justify-center shrink-0"
+                    style={{ background: m.nodeType?.color || "#64748b" }}
+                  >
+                    <NodeIcon name={m.nodeType?.icon} className="w-2.5 h-2.5 text-white" />
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm truncate">{m.title || tr("common.untitled")}</span>
+                    {m.snippet && <span className="block text-[11px] sw-text-dim line-clamp-2">{m.snippet}</span>}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Image */}
         <div className="sw-sec sw-sec-image">
           <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.image")}</label>
           {draft.image ? (
             <div className="mt-2 relative">
-              <img src={draft.image} alt="" className="w-full max-h-48 object-cover rounded-lg border sw-border-c" />
+              <img src={imageSrc || undefined} alt="" className="w-full max-h-48 object-cover rounded-lg border sw-border-c" />
               <button
                 data-testid="remove-image-btn"
                 onClick={() => set({ image: "" })}
@@ -748,7 +783,9 @@ export default function NodeEditorPanel({
                 <Input
                   autoFocus
                   data-testid="image-url-input"
-                  value={draft.image}
+                  // Ссылка на картинку в хранилище — не адрес, показывать её
+                  // в поле «по ссылке» незачем.
+                  value={isImageRef(draft.image) ? "" : draft.image}
                   onChange={(e) => set({ image: e.target.value })}
                   placeholder={tr("node.imageUrl")}
                   className="bg-transparent sw-border-c text-xs h-9"

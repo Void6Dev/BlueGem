@@ -6,6 +6,7 @@ import {
 import { NodeIcon } from "@/components/NodeIcon";
 import MarkdownView from "@/components/MarkdownView";
 import { useT } from "@/lib/i18n";
+import { useImageSrc } from "@/lib/images";
 
 // Превью узла по одиночному клику.
 //
@@ -38,6 +39,7 @@ export default function NodePreview({
 }) {
   const t = useT();
   const id = node.id;
+  const imageSrc = useImageSrc(node.image);
   const ref = useRef(null);
   const [h, setH] = useState(0);
 
@@ -124,7 +126,7 @@ export default function NodePreview({
       </div>
 
       <div className="sw-preview-body sw-scroll-y">
-        {node.image && <img src={node.image} alt="" className="sw-preview-img" decoding="async" />}
+        {imageSrc && <img src={imageSrc} alt="" className="sw-preview-img" decoding="async" />}
 
         {(node.date || dates.length > 0) && (
           <div className="sw-node-dates">

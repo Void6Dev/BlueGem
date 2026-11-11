@@ -6,6 +6,9 @@ from starlette.middleware.cors import CORSMiddleware
 import os
 import json
 import re
+import base64
+import binascii
+import hashlib
 import sqlite3
 import logging
 import threading
@@ -15,7 +18,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any, Dict
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 ROOT_DIR = Path(__file__).parent
@@ -147,6 +150,30 @@ def init_db():
                 color TEXT DEFAULT '',
                 shape TEXT DEFAULT ''
             );
+            -- Картинки узлов: по одной строке на содержимое (ключ — sha256), а
+            -- в узле только ссылка "bg-image:<hash>". Раньше картинка лежала
+            -- в самом узле строкой base64, и каждая выборка графа, каждый
+            -- экспорт и каждая резервная копия таскали её целиком.
+            CREATE TABLE IF NOT EXISTS images (
+                hash TEXT PRIMARY KEY,
+                mime TEXT NOT NULL,
+                data BLOB NOT NULL,
+                createdAt TEXT NOT NULL
+            );
+            -- Резервные копии проектов: снимок в том же виде, что и экспорт,
+            -- только картинки в нём ссылками (сами они в images).
+            CREATE TABLE IF NOT EXISTS backups (
+                id TEXT PRIMARY KEY,
+                projectId TEXT NOT NULL,
+                createdAt TEXT NOT NULL,
+                reason TEXT NOT NULL DEFAULT 'auto',
+                hash TEXT NOT NULL DEFAULT '',
+                name TEXT NOT NULL DEFAULT '',
+                nodeCount INTEGER NOT NULL DEFAULT 0,
+                edgeCount INTEGER NOT NULL DEFAULT 0,
+                data TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_backups_project ON backups(projectId, createdAt);
             CREATE INDEX IF NOT EXISTS idx_nodes_project ON nodes(projectId);
             CREATE INDEX IF NOT EXISTS idx_edges_project ON edges(projectId);
             CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source);
@@ -163,6 +190,9 @@ def init_db():
             # Вид этой карточки: "" — как в настройках проекта, иначе
             # "compact"/"detailed" только для неё одной.
             "cardMode": "TEXT DEFAULT ''",
+            # Когда узел правили последний раз — по нему синхронизация решает,
+            # чья версия новее. Пусто у старых строк: считается равным createdAt.
+            "updatedAt": "TEXT NOT NULL DEFAULT ''",
         })
         _ensure_columns(conn, "edges", {
             "relType": "TEXT DEFAULT ''", "color": "TEXT DEFAULT ''",
@@ -175,8 +205,20 @@ def init_db():
             # Без этого React Flow цепляет линию к первой точке узла, и связь,
             # проведённая справа, отрисовывается слева.
             "sourceHandle": "TEXT DEFAULT ''", "targetHandle": "TEXT DEFAULT ''",
+            "updatedAt": "TEXT NOT NULL DEFAULT ''",
+        })
+        _ensure_columns(conn, "projects", {
+            # Когда меняли название, описание или настройки. updatedAt для
+            # этого не годится: его двигает и любая правка узла.
+            "metaUpdatedAt": "TEXT NOT NULL DEFAULT ''",
+            # Следы удалений: {"nodes": {id: когда}, "edges": {id: когда}}.
+            # Без них синхронизация не отличила бы «удалили здесь» от «ещё не
+            # видели там» и возвращала бы удалённое обратно.
+            "deleted": "TEXT NOT NULL DEFAULT '{}'",
         })
         migrate_legacy_dates(conn)
+        migrate_inline_images(conn)
+        gc_images(conn)
 
 
 # ---------- Chronology ----------
@@ -240,7 +282,213 @@ def migrate_legacy_dates(conn):
                          (json.dumps(entries, ensure_ascii=False), r["id"]))
 
 
-app = FastAPI(title="BlueGem API", version="1.1.0")
+# ---------- Images ----------
+# Картинка узла хранится отдельно и одна на содержимое: в узле лежит ссылка
+# "bg-image:<sha256>". Наружу — в файл .bgproj — она снова уходит строкой
+# data:, так что формат файла не изменился и старые версии его читают.
+IMAGE_PREFIX = "bg-image:"
+_DATA_URL = re.compile(r"^data:(image/[\w.+-]+);base64,(.*)$", re.S)
+_IMAGE_REF = re.compile(r"bg-image:([0-9a-f]{64})")
+
+
+def store_image(conn, value: Any) -> str:
+    """data:image/... → ссылка на строку в images. Остальное — как есть."""
+    value = str(value or "")
+    if not value.startswith("data:image/"):
+        return value
+    m = _DATA_URL.match(value)
+    if not m:
+        return value
+    try:
+        raw = base64.b64decode(m.group(2), validate=False)
+    except (binascii.Error, ValueError):
+        return value
+    if not raw:
+        return value
+    digest = hashlib.sha256(raw).hexdigest()
+    conn.execute(
+        "INSERT OR IGNORE INTO images (hash, mime, data, createdAt) VALUES (?, ?, ?, ?)",
+        (digest, m.group(1), raw, now_iso()),
+    )
+    return IMAGE_PREFIX + digest
+
+
+def inline_image(conn, value: Any) -> str:
+    """Ссылка на картинку → data:image/...; пропавшая картинка → пусто."""
+    value = str(value or "")
+    if not value.startswith(IMAGE_PREFIX):
+        return value
+    row = conn.execute("SELECT mime, data FROM images WHERE hash = ?",
+                       (value[len(IMAGE_PREFIX):],)).fetchone()
+    if not row:
+        return ""
+    return f"data:{row['mime']};base64,{base64.b64encode(row['data']).decode('ascii')}"
+
+
+def migrate_inline_images(conn):
+    """Однократно вынести base64 из узлов в images. Идемпотентно."""
+    rows = conn.execute("SELECT id, image FROM nodes WHERE image LIKE 'data:image/%'").fetchall()
+    for r in rows:
+        ref = store_image(conn, r["image"])
+        if ref != r["image"]:
+            conn.execute("UPDATE nodes SET image = ? WHERE id = ?", (ref, r["id"]))
+
+
+def gc_images(conn):
+    """Убрать картинки, на которые не ссылается ни узел, ни резервная копия."""
+    used = set()
+    for r in conn.execute("SELECT image FROM nodes WHERE image LIKE 'bg-image:%'"):
+        used.add(r["image"][len(IMAGE_PREFIX):])
+    for r in conn.execute("SELECT data FROM backups WHERE data LIKE '%bg-image:%'"):
+        used.update(_IMAGE_REF.findall(r["data"]))
+    stale = [r["hash"] for r in conn.execute("SELECT hash FROM images") if r["hash"] not in used]
+    for h in stale:
+        conn.execute("DELETE FROM images WHERE hash = ?", (h,))
+    return len(stale)
+
+
+# ---------- Deletion marks (for sync) ----------
+# Сколько помнить удаление. Устройство, которое не синхронизировалось
+# полгода, вернёт удалённое — это честнее, чем копить следы вечно.
+TOMBSTONE_DAYS = 180
+
+
+def load_deleted(raw: Any) -> Dict[str, Dict[str, str]]:
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else (raw or {})
+    except (TypeError, ValueError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    return {k: dict(data.get(k) or {}) for k in ("nodes", "edges")}
+
+
+def prune_deleted(dead: Dict[str, Dict[str, str]]) -> Dict[str, Dict[str, str]]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=TOMBSTONE_DAYS)).isoformat()
+    return {k: {i: t for i, t in v.items() if str(t) >= cutoff} for k, v in dead.items()}
+
+
+def mark_deleted(conn, project_id: str, nodes=(), edges=()):
+    nodes, edges = list(nodes), list(edges)
+    if not nodes and not edges:
+        return
+    row = conn.execute("SELECT deleted FROM projects WHERE id = ?", (project_id,)).fetchone()
+    if not row:
+        return
+    dead = load_deleted(row["deleted"])
+    stamp = now_iso()
+    for i in nodes:
+        dead["nodes"][i] = stamp
+    for i in edges:
+        dead["edges"][i] = stamp
+    conn.execute("UPDATE projects SET deleted = ? WHERE id = ?",
+                 (json.dumps(prune_deleted(dead)), project_id))
+
+
+# ---------- Row writers ----------
+# Узел и связь вставляются из пяти мест (создание, пример шаблона, импорт,
+# копия, замена содержимого) — вставка одна, чтобы колонки не расходились.
+def insert_node(conn, project_id: str, n: Dict[str, Any], node_id: str,
+                id_map: Optional[Dict[str, str]] = None) -> None:
+    pos = n.get("position") or {}
+    entries = n.get("dates")
+    if not entries:
+        entries = legacy_date_entries(str(n.get("date", "") or ""))
+    if id_map:
+        entries = remap_date_refs(entries, id_map)
+    created = n.get("createdAt") or now_iso()
+    conn.execute(
+        "INSERT INTO nodes (id, projectId, typeId, title, description, fields, position, "
+        "tags, image, date, dates, canvas, width, cardMode, createdAt, updatedAt) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (node_id, project_id, n.get("typeId") or "note", n.get("title", "") or "",
+         n.get("description", "") or "",
+         json.dumps(n.get("fields") or [], ensure_ascii=False),
+         json.dumps({"x": pos.get("x", 0) or 0, "y": pos.get("y", 0) or 0}),
+         json.dumps(n.get("tags") or [], ensure_ascii=False),
+         store_image(conn, n.get("image", "")),
+         str(n.get("date", "") or ""),
+         json.dumps(entries or [], ensure_ascii=False),
+         n.get("canvas", "") or "", int(n.get("width", 0) or 0),
+         n.get("cardMode", "") or "", created, n.get("updatedAt") or created),
+    )
+
+
+def insert_edge(conn, project_id: str, e: Dict[str, Any], edge_id: str,
+                source: str, target: str) -> None:
+    conn.execute(
+        "INSERT INTO edges (id, projectId, source, target, label, relType, color, points, "
+        "sourceHandle, targetHandle, shape, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (edge_id, project_id, source, target, e.get("label", "") or "",
+         e.get("relType", "") or "", e.get("color", "") or "",
+         json.dumps(e.get("points") or []),
+         e.get("sourceHandle", "") or "", e.get("targetHandle", "") or "",
+         e.get("shape", "") or "", e.get("updatedAt") or now_iso()),
+    )
+
+
+def _id_taken(conn, table: str, ids: List[str]) -> set:
+    taken = set()
+    ids = [i for i in ids if i]
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        q = f"SELECT id FROM {table} WHERE id IN ({','.join('?' * len(chunk))})"
+        taken.update(r["id"] for r in conn.execute(q, chunk))
+    return taken
+
+
+def insert_graph(conn, project_id: str, nodes: List[dict], edges: List[dict],
+                 keep_ids: bool) -> int:
+    """Узлы и связи снимка в проект.
+
+    keep_ids — оставить id из снимка (синхронизация, восстановление): по ним
+    одно и то же узнаётся на разных устройствах. id, занятый в другом проекте,
+    всё равно заменяется — чужой узел перезаписывать нельзя.
+    """
+    taken = _id_taken(conn, "nodes", [n.get("id") for n in nodes]) if keep_ids else set()
+    id_map: Dict[str, str] = {}
+    used = set()
+    plan = []
+    for n in nodes:
+        nid = n.get("id")
+        new_id = nid if (keep_ids and nid and nid not in taken and nid not in used) \
+            else str(uuid.uuid4())
+        used.add(new_id)
+        if nid and nid not in id_map:
+            id_map[nid] = new_id
+        plan.append((n, new_id))
+    # Карта id готова целиком до первой вставки: относительные даты ссылаются
+    # на другие узлы, и их надо переписать на новые id.
+    for n, new_id in plan:
+        insert_node(conn, project_id, n, new_id, id_map)
+    edge_taken = _id_taken(conn, "edges", [e.get("id") for e in edges]) if keep_ids else set()
+    seen = set()
+    for e in edges:
+        src, tgt = id_map.get(e.get("source")), id_map.get(e.get("target"))
+        if not src or not tgt or src == tgt:
+            continue  # висящая связь в файле — отбрасываем
+        eid = e.get("id")
+        if not (keep_ids and eid and eid not in edge_taken and eid not in seen):
+            eid = str(uuid.uuid4())
+        seen.add(eid)
+        insert_edge(conn, project_id, e, eid, src, tgt)
+    return len(plan)
+
+
+def _app_version() -> str:
+    """Версия приложения: её передаёт оболочка Electron, а при запуске из
+    исходников она читается из package.json рядом. Раньше здесь стояла
+    вписанная руками 1.1.0 и отставала от релизов."""
+    env = os.environ.get("BG_VERSION", "").strip()
+    if env:
+        return env
+    try:
+        return json.loads((ROOT_DIR.parent / "package.json").read_text("utf-8")).get("version") or "dev"
+    except (OSError, ValueError):
+        return "dev"
+
+
+app = FastAPI(title="BlueGem API", version=_app_version())
 api_router = APIRouter(prefix="/api")
 
 
@@ -607,20 +855,14 @@ def insert_starter(conn, project_id: str, template: str, lang: str) -> None:
     canvas = canvases_for(template, lang)[0]["id"]
     for key, type_id, x, y, tags in DND_STARTER_NODES:
         title, desc = text[key]
-        conn.execute(
-            "INSERT INTO nodes (id, projectId, typeId, title, description, fields, position, "
-            "tags, image, date, dates, canvas, width, cardMode, createdAt) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (ids[key], project_id, type_id, title, desc, "[]",
-             json.dumps({"x": x, "y": y}), json.dumps(tags, ensure_ascii=False),
-             "", "", json.dumps(starter_dates(key, ids), ensure_ascii=False), canvas, 0, "", stamp),
-        )
+        insert_node(conn, project_id, {
+            "typeId": type_id, "title": title, "description": desc,
+            "position": {"x": x, "y": y}, "tags": tags,
+            "dates": starter_dates(key, ids), "canvas": canvas, "createdAt": stamp,
+        }, ids[key])
     for a, b, rel in DND_STARTER_EDGES:
-        conn.execute(
-            "INSERT INTO edges (id, projectId, source, target, label, relType, color, points, "
-            "sourceHandle, targetHandle, shape) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (str(uuid.uuid4()), project_id, ids[a], ids[b], "", rel, "", "[]", "", "", ""),
-        )
+        insert_edge(conn, project_id, {"relType": rel, "updatedAt": stamp},
+                    str(uuid.uuid4()), ids[a], ids[b])
 
 
 # ---------- Models ----------
@@ -656,6 +898,7 @@ class NodeModel(BaseModel):
     # Вид карточки, заданный для неё одной; "" — общий из настроек проекта.
     cardMode: str = ""
     createdAt: str = Field(default_factory=now_iso)
+    updatedAt: str = Field(default_factory=now_iso)
 
 
 class NodeCreate(BaseModel):
@@ -710,6 +953,7 @@ class EdgeModel(BaseModel):
     targetHandle: str = ""
     # Форма линии для этой связи; "" — общая из настроек проекта.
     shape: str = ""
+    updatedAt: str = Field(default_factory=now_iso)
 
 
 class EdgeCreate(BaseModel):
@@ -745,6 +989,8 @@ class ProjectModel(BaseModel):
     settings: Dict[str, Any] = Field(default_factory=lambda: dict(DEFAULT_SETTINGS))
     createdAt: str = Field(default_factory=now_iso)
     updatedAt: str = Field(default_factory=now_iso)
+    # Когда меняли название, описание или настройки (для синхронизации).
+    metaUpdatedAt: str = ""
     nodeCount: int = 0
     edgeCount: int = 0
     # Состав по типам узлов для полоски на карточке проекта: [{color, count}].
@@ -773,6 +1019,16 @@ class ProjectImport(BaseModel):
     project: Optional[Dict[str, Any]] = None
     nodes: List[Dict[str, Any]] = []
     edges: List[Dict[str, Any]] = []
+    # Оставить id из файла. Так проект, перенесённый с другого устройства,
+    # узнаётся при следующей синхронизации. Если id уже занят — выдаются новые.
+    keepIds: bool = False
+
+
+class ProjectContent(BaseModel):
+    """Снимок проекта целиком — для синхронизации и восстановления."""
+    project: Dict[str, Any] = {}
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
 
 
 # ---------- Row -> dict helpers ----------
@@ -787,6 +1043,7 @@ def project_row(r, counts=None) -> dict:
         "settings": merged,
         "createdAt": r["createdAt"],
         "updatedAt": r["updatedAt"],
+        "metaUpdatedAt": (r["metaUpdatedAt"] if "metaUpdatedAt" in r.keys() else "") or r["createdAt"],
         "nodeCount": (counts or {}).get("nodes", 0),
         "edgeCount": (counts or {}).get("edges", 0),
         "typeMix": type_mix(merged, (counts or {}).get("byType") or {}),
@@ -811,6 +1068,7 @@ def node_row(r) -> dict:
         "width": (r["width"] if "width" in r.keys() else 0) or 0,
         "cardMode": (r["cardMode"] if "cardMode" in r.keys() else "") or "",
         "createdAt": r["createdAt"],
+        "updatedAt": (r["updatedAt"] if "updatedAt" in r.keys() else "") or r["createdAt"],
     }
 
 
@@ -827,6 +1085,7 @@ def edge_row(r) -> dict:
         "sourceHandle": (r["sourceHandle"] if "sourceHandle" in r.keys() else "") or "",
         "targetHandle": (r["targetHandle"] if "targetHandle" in r.keys() else "") or "",
         "shape": (r["shape"] if "shape" in r.keys() else "") or "",
+        "updatedAt": (r["updatedAt"] if "updatedAt" in r.keys() else "") or "",
     }
 
 
@@ -933,15 +1192,19 @@ def update_project(project_id: str, payload: ProjectUpdate):
         row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
         if not row:
             raise fail(404, "projectNotFound", "Project not found")
+        maybe_backup(conn, project_id)
         doc = project_row(row)
         updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
-        updates["updatedAt"] = now_iso()
+        stamp = now_iso()
+        if updates:
+            updates["metaUpdatedAt"] = stamp
+        updates["updatedAt"] = stamp
         doc.update(updates)
         conn.execute(
-            "UPDATE projects SET name = ?, description = ?, settings = ?, updatedAt = ? "
-            "WHERE id = ?",
+            "UPDATE projects SET name = ?, description = ?, settings = ?, updatedAt = ?, "
+            "metaUpdatedAt = ? WHERE id = ?",
             (doc["name"], doc["description"], json.dumps(doc["settings"]),
-             doc["updatedAt"], project_id),
+             doc["updatedAt"], doc["metaUpdatedAt"], project_id),
         )
     return doc
 
@@ -952,22 +1215,25 @@ def delete_project(project_id: str):
         conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
         conn.execute("DELETE FROM nodes WHERE projectId = ?", (project_id,))
         conn.execute("DELETE FROM edges WHERE projectId = ?", (project_id,))
+        conn.execute("DELETE FROM backups WHERE projectId = ?", (project_id,))
     return {"ok": True}
 
 
 # ---------- Export / import / duplicate ----------
-@api_router.get("/projects/{project_id}/export")
-def export_project(project_id: str):
-    """Full project snapshot — the same shape POST /projects/import accepts."""
-    with db() as conn:
-        row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
-        if not row:
-            raise fail(404, "projectNotFound", "Project not found")
-        project = project_row(row)
-        nodes = [node_row(r) for r in conn.execute(
-            "SELECT * FROM nodes WHERE projectId = ?", (project_id,)).fetchall()]
-        edges = [edge_row(r) for r in conn.execute(
-            "SELECT * FROM edges WHERE projectId = ?", (project_id,)).fetchall()]
+def project_snapshot(conn, project_id: str, inline: bool) -> Optional[dict]:
+    """Проект целиком. inline — картинки строками data: (для файла)."""
+    row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    if not row:
+        return None
+    project = project_row(row)
+    project["deleted"] = prune_deleted(load_deleted(row["deleted"] if "deleted" in row.keys() else "{}"))
+    nodes = [node_row(r) for r in conn.execute(
+        "SELECT * FROM nodes WHERE projectId = ?", (project_id,)).fetchall()]
+    if inline:
+        for n in nodes:
+            n["image"] = inline_image(conn, n["image"])
+    edges = [edge_row(r) for r in conn.execute(
+        "SELECT * FROM edges WHERE projectId = ?", (project_id,)).fetchall()]
     return {
         "format": "bluegem-project",
         "version": 1,
@@ -978,55 +1244,38 @@ def export_project(project_id: str):
     }
 
 
+@api_router.get("/projects/{project_id}/export")
+def export_project(project_id: str, inline: bool = True):
+    """Full project snapshot — the same shape POST /projects/import accepts."""
+    with db() as conn:
+        snap = project_snapshot(conn, project_id, inline)
+    if not snap:
+        raise fail(404, "projectNotFound", "Project not found")
+    return Response(content=json.dumps(snap, ensure_ascii=False), media_type="application/json")
+
+
 def _insert_snapshot(conn, name: str, description: str, settings: dict,
-                     nodes: List[dict], edges: List[dict]) -> dict:
-    """Insert a project plus its graph under fresh ids; returns the new project."""
+                     nodes: List[dict], edges: List[dict], keep_ids: bool = False,
+                     project_id: Optional[str] = None, deleted: Any = None,
+                     meta_updated_at: str = "") -> dict:
+    """Insert a project plus its graph; returns the new project."""
+    if not (keep_ids and project_id and not conn.execute(
+            "SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone()):
+        project_id = None
+        keep_ids = False
     project = ProjectModel(name=name, description=description,
-                           settings={**DEFAULT_SETTINGS, **(settings or {})})
+                           settings={**DEFAULT_SETTINGS, **(settings or {})},
+                           **({"id": project_id} if project_id else {}))
     d = project.model_dump()
+    d["metaUpdatedAt"] = meta_updated_at or d["updatedAt"]
     conn.execute(
-        "INSERT INTO projects (id, name, description, settings, createdAt, updatedAt) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO projects (id, name, description, settings, createdAt, updatedAt, "
+        "metaUpdatedAt, deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (d["id"], d["name"], d["description"], json.dumps(d["settings"]),
-         d["createdAt"], d["updatedAt"]),
+         d["createdAt"], d["updatedAt"], d["metaUpdatedAt"],
+         json.dumps(prune_deleted(load_deleted(deleted)) if keep_ids else {})),
     )
-    # Идентификаторы раздаём заранее: относительные даты ссылаются на другие
-    # узлы, и эти ссылки надо переписать на новые id — иначе копия проекта
-    # потеряет всю цепочку «через 5 дней после...».
-    id_map = {n.get("id"): str(uuid.uuid4()) for n in nodes}
-    for n in nodes:
-        new_id = id_map[n.get("id")]
-        pos = n.get("position") or {}
-        entries = n.get("dates")
-        if not entries:
-            entries = legacy_date_entries(str(n.get("date", "") or ""))
-        conn.execute(
-            "INSERT INTO nodes (id, projectId, typeId, title, description, fields, position, "
-            "tags, image, date, dates, canvas, width, cardMode, createdAt) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (new_id, d["id"], n.get("typeId", "note"), n.get("title", ""),
-             n.get("description", ""), json.dumps(n.get("fields") or []),
-             json.dumps({"x": pos.get("x", 0), "y": pos.get("y", 0)}),
-             json.dumps(n.get("tags") or []), n.get("image", "") or "",
-             str(n.get("date", "") or ""),
-             json.dumps(remap_date_refs(entries, id_map), ensure_ascii=False),
-             n.get("canvas", "") or "", int(n.get("width", 0) or 0),
-             n.get("cardMode", "") or "", n.get("createdAt") or now_iso()),
-        )
-    for e in edges:
-        src, tgt = id_map.get(e.get("source")), id_map.get(e.get("target"))
-        if not src or not tgt:
-            continue  # dangling edge in the imported file — drop it
-        conn.execute(
-            "INSERT INTO edges (id, projectId, source, target, label, relType, color, points, "
-            "sourceHandle, targetHandle, shape) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (str(uuid.uuid4()), d["id"], src, tgt, e.get("label", "") or "",
-             e.get("relType", "") or "", e.get("color", "") or "",
-             json.dumps(e.get("points", []) or []),
-             e.get("sourceHandle", "") or "", e.get("targetHandle", "") or "",
-             e.get("shape", "") or ""),
-        )
-    d["nodeCount"] = len(id_map)
+    d["nodeCount"] = insert_graph(conn, d["id"], nodes, edges, keep_ids)
     return d
 
 
@@ -1038,16 +1287,227 @@ def import_project(payload: ProjectImport):
         raise fail(400, "projectNameRequired", "A project needs a name")
     with db() as conn:
         return _insert_snapshot(conn, name, src.get("description", ""),
-                                src.get("settings") or {}, payload.nodes, payload.edges)
+                                src.get("settings") or {}, payload.nodes, payload.edges,
+                                keep_ids=payload.keepIds, project_id=src.get("id"),
+                                deleted=src.get("deleted"),
+                                meta_updated_at=src.get("metaUpdatedAt") or "")
 
 
 @api_router.post("/projects/{project_id}/duplicate", response_model=ProjectModel)
 def duplicate_project(project_id: str):
-    snapshot = export_project(project_id)
-    p = snapshot["project"]
     with db() as conn:
+        snapshot = project_snapshot(conn, project_id, inline=False)
+        if not snapshot:
+            raise fail(404, "projectNotFound", "Project not found")
+        p = snapshot["project"]
         return _insert_snapshot(conn, f"{p['name']} (copy)", p["description"],
                                 p["settings"], snapshot["nodes"], snapshot["edges"])
+
+
+def replace_content(conn, project_id: str, snap: Dict[str, Any]) -> dict:
+    """Заменить содержимое проекта снимком, сохранив id проекта и узлов."""
+    row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    if not row:
+        raise fail(404, "projectNotFound", "Project not found")
+    src = snap.get("project") or {}
+    current = project_row(row)
+    name = str(src.get("name") or current["name"]).strip() or current["name"]
+    settings = {**DEFAULT_SETTINGS, **(src.get("settings") or current["settings"])}
+    stamp = now_iso()
+    conn.execute("DELETE FROM nodes WHERE projectId = ?", (project_id,))
+    conn.execute("DELETE FROM edges WHERE projectId = ?", (project_id,))
+    insert_graph(conn, project_id, snap.get("nodes") or [], snap.get("edges") or [], keep_ids=True)
+    conn.execute(
+        "UPDATE projects SET name = ?, description = ?, settings = ?, updatedAt = ?, "
+        "metaUpdatedAt = ?, deleted = ? WHERE id = ?",
+        (name, str(src.get("description", current["description"]) or ""), json.dumps(settings),
+         stamp, src.get("metaUpdatedAt") or stamp,
+         json.dumps(prune_deleted(load_deleted(src.get("deleted")))), project_id),
+    )
+    row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    return project_row(row, _counts(conn).get(project_id))
+
+
+@api_router.put("/projects/{project_id}/content", response_model=ProjectModel)
+def put_project_content(project_id: str, payload: ProjectContent):
+    """Содержимое проекта целиком — так синхронизация кладёт результат слияния.
+
+    Перед заменой снимается резервная копия: что бы ни пришло из папки
+    синхронизации, прежнее состояние можно вернуть.
+    """
+    with db() as conn:
+        make_backup(conn, project_id, "sync")
+        return replace_content(conn, project_id, payload.model_dump())
+
+
+# ---------- Backups ----------
+# Копия снимается сама: перед правкой, если последней больше десяти минут.
+# То есть в копиях всегда есть состояние «до» — и случайно удалённый узел,
+# и неудачная авто-раскладка возвращаются из ближайшей копии.
+BACKUP_INTERVAL = timedelta(minutes=10)
+# Последние двенадцать — подряд (это пара часов работы), дальше — по одной на
+# день за месяц. Больше копий — больше места, а пользы от пятой копии
+# вчерашнего дня почти нет.
+BACKUP_KEEP_RECENT = 12
+BACKUP_KEEP_DAYS = 30
+
+
+def _content_hash(snap: dict) -> str:
+    p = snap["project"]
+    body = {
+        "p": [p.get("name"), p.get("description"), p.get("settings")],
+        "n": sorted(({k: v for k, v in n.items() if k != "updatedAt"} for n in snap["nodes"]),
+                    key=lambda n: n["id"]),
+        "e": sorted(({k: v for k, v in e.items() if k != "updatedAt"} for e in snap["edges"]),
+                    key=lambda e: e["id"]),
+    }
+    return hashlib.sha1(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def backup_row(r) -> dict:
+    return {"id": r["id"], "projectId": r["projectId"], "createdAt": r["createdAt"],
+            "reason": r["reason"], "name": r["name"],
+            "nodeCount": r["nodeCount"], "edgeCount": r["edgeCount"]}
+
+
+def make_backup(conn, project_id: str, reason: str) -> Optional[dict]:
+    """Снять копию. Если содержимое не изменилось с прошлой — вернуть прошлую."""
+    snap = project_snapshot(conn, project_id, inline=False)
+    if not snap:
+        return None
+    digest = _content_hash(snap)
+    last = conn.execute(
+        "SELECT * FROM backups WHERE projectId = ? ORDER BY createdAt DESC LIMIT 1",
+        (project_id,)).fetchone()
+    if last and last["hash"] == digest:
+        return backup_row(last)
+    doc = {"id": str(uuid.uuid4()), "projectId": project_id, "createdAt": now_iso(),
+           "reason": reason, "name": snap["project"]["name"],
+           "nodeCount": len(snap["nodes"]), "edgeCount": len(snap["edges"])}
+    conn.execute(
+        "INSERT INTO backups (id, projectId, createdAt, reason, hash, name, nodeCount, "
+        "edgeCount, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (doc["id"], project_id, doc["createdAt"], reason, digest, doc["name"],
+         doc["nodeCount"], doc["edgeCount"], json.dumps(snap, ensure_ascii=False)),
+    )
+    prune_backups(conn, project_id)
+    return doc
+
+
+def maybe_backup(conn, project_id: str) -> None:
+    last = conn.execute(
+        "SELECT createdAt FROM backups WHERE projectId = ? ORDER BY createdAt DESC LIMIT 1",
+        (project_id,)).fetchone()
+    if last:
+        try:
+            when = datetime.fromisoformat(last["createdAt"])
+        except ValueError:
+            when = None
+        if when and datetime.now(timezone.utc) - when < BACKUP_INTERVAL:
+            return
+    make_backup(conn, project_id, "auto")
+
+
+def backups_to_drop(rows: List[dict], now: Optional[datetime] = None) -> List[str]:
+    """Какие копии убрать. rows — от новых к старым, с id и createdAt."""
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=BACKUP_KEEP_DAYS)).isoformat()
+    drop, days = [], set()
+    for i, r in enumerate(rows):
+        day = r["createdAt"][:10]
+        if i < BACKUP_KEEP_RECENT:
+            days.add(day)
+        elif r["createdAt"] < cutoff or day in days:
+            drop.append(r["id"])
+        else:
+            days.add(day)
+    return drop
+
+
+def prune_backups(conn, project_id: str) -> None:
+    rows = conn.execute(
+        "SELECT id, createdAt FROM backups WHERE projectId = ? ORDER BY createdAt DESC",
+        (project_id,)).fetchall()
+    for bid in backups_to_drop([dict(r) for r in rows]):
+        conn.execute("DELETE FROM backups WHERE id = ?", (bid,))
+
+
+@api_router.get("/projects/{project_id}/backups")
+def list_backups(project_id: str):
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT id, projectId, createdAt, reason, name, nodeCount, edgeCount "
+            "FROM backups WHERE projectId = ? ORDER BY createdAt DESC", (project_id,)).fetchall()
+    return [backup_row(r) for r in rows]
+
+
+@api_router.post("/projects/{project_id}/backups")
+def create_backup(project_id: str):
+    with db() as conn:
+        doc = make_backup(conn, project_id, "manual")
+    if not doc:
+        raise fail(404, "projectNotFound", "Project not found")
+    return doc
+
+
+@api_router.post("/backups/{backup_id}/restore", response_model=ProjectModel)
+def restore_backup(backup_id: str):
+    """Вернуть проект к копии. Текущее состояние перед этим само уходит в копию,
+    так что восстановление тоже можно отменить."""
+    with db() as conn:
+        row = conn.execute("SELECT * FROM backups WHERE id = ?", (backup_id,)).fetchone()
+        if not row:
+            raise fail(404, "backupNotFound", "Backup not found")
+        project_id = row["projectId"]
+        snap = json.loads(row["data"])
+        make_backup(conn, project_id, "restore")
+        current = project_snapshot(conn, project_id, inline=False) or {"nodes": [], "edges": []}
+        # Возвращённое — свежая правка: на другом устройстве эти узлы не должны
+        # проиграть своим старым следам удаления, а пропавшие после возврата —
+        # должны пропасть и там.
+        stamp = now_iso()
+        keep_n = {n["id"] for n in snap.get("nodes", [])}
+        keep_e = {e["id"] for e in snap.get("edges", [])}
+        dead = load_deleted((current.get("project") or {}).get("deleted"))
+        for n in current["nodes"]:
+            if n["id"] not in keep_n:
+                dead["nodes"][n["id"]] = stamp
+        for e in current["edges"]:
+            if e["id"] not in keep_e:
+                dead["edges"][e["id"]] = stamp
+        for i in keep_n:
+            dead["nodes"].pop(i, None)
+        for i in keep_e:
+            dead["edges"].pop(i, None)
+        for n in snap.get("nodes", []):
+            n["updatedAt"] = stamp
+        for e in snap.get("edges", []):
+            e["updatedAt"] = stamp
+        snap.setdefault("project", {})
+        snap["project"]["deleted"] = dead
+        snap["project"]["metaUpdatedAt"] = stamp
+        return replace_content(conn, project_id, snap)
+
+
+@api_router.delete("/backups/{backup_id}")
+def delete_backup(backup_id: str):
+    with db() as conn:
+        conn.execute("DELETE FROM backups WHERE id = ?", (backup_id,))
+    return {"ok": True}
+
+
+# ---------- Images ----------
+@api_router.get("/images/{digest}")
+def get_image(digest: str):
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise fail(404, "notFound", "Not found")
+    with db() as conn:
+        row = conn.execute("SELECT mime, data FROM images WHERE hash = ?", (digest,)).fetchone()
+    if not row:
+        raise fail(404, "notFound", "Not found")
+    # Содержимое по адресу не меняется никогда: адрес — это хэш содержимого.
+    return Response(content=row["data"], media_type=row["mime"],
+                    headers={"Cache-Control": "private, max-age=31536000, immutable"})
 
 
 # ---------- Graph routes ----------
@@ -1079,15 +1539,9 @@ def create_node(project_id: str, payload: NodeCreate):
     node = NodeModel(projectId=project_id, **payload.model_dump())
     d = node.model_dump()
     with db() as conn:
-        conn.execute(
-            "INSERT INTO nodes (id, projectId, typeId, title, description, fields, position, tags, image, date, dates, canvas, width, cardMode, createdAt) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (d["id"], d["projectId"], d["typeId"], d["title"], d["description"],
-             json.dumps(d["fields"]), json.dumps(d["position"]),
-             json.dumps(d["tags"]), d["image"], d["date"],
-             json.dumps(d["dates"], ensure_ascii=False), d["canvas"], d["width"],
-             d["cardMode"], d["createdAt"]),
-        )
+        maybe_backup(conn, project_id)
+        insert_node(conn, project_id, d, d["id"])
+        d["image"] = store_image(conn, d["image"])
         touch_project(conn, project_id)
     return d
 
@@ -1096,10 +1550,12 @@ def create_node(project_id: str, payload: NodeCreate):
 def update_node_positions(project_id: str, payload: PositionsUpdate):
     """Bulk position write — one request for a whole auto-layout pass."""
     with db() as conn:
+        maybe_backup(conn, project_id)
+        stamp = now_iso()
         for p in payload.positions:
             conn.execute(
-                "UPDATE nodes SET position = ? WHERE id = ? AND projectId = ?",
-                (json.dumps(p.position.model_dump()), p.id, project_id),
+                "UPDATE nodes SET position = ?, updatedAt = ? WHERE id = ? AND projectId = ?",
+                (json.dumps(p.position.model_dump()), stamp, p.id, project_id),
             )
         touch_project(conn, project_id)
     return {"ok": True, "updated": len(payload.positions)}
@@ -1111,18 +1567,22 @@ def update_node(node_id: str, payload: NodeUpdate):
         row = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
         if not row:
             raise fail(404, "nodeNotFound", "Node not found")
+        maybe_backup(conn, row["projectId"])
         doc = node_row(row)
         updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
         doc.update(updates)
+        doc["image"] = store_image(conn, doc.get("image", ""))
+        doc["updatedAt"] = now_iso()
         conn.execute(
-            "UPDATE nodes SET typeId = ?, title = ?, description = ?, fields = ?, position = ?, tags = ?, image = ?, date = ?, dates = ?, canvas = ?, width = ?, cardMode = ? "
-            "WHERE id = ?",
+            "UPDATE nodes SET typeId = ?, title = ?, description = ?, fields = ?, position = ?, "
+            "tags = ?, image = ?, date = ?, dates = ?, canvas = ?, width = ?, cardMode = ?, "
+            "updatedAt = ? WHERE id = ?",
             (doc["typeId"], doc["title"], doc["description"],
-             json.dumps(doc["fields"]), json.dumps(doc["position"]),
-             json.dumps(doc.get("tags", [])), doc.get("image", ""),
+             json.dumps(doc["fields"], ensure_ascii=False), json.dumps(doc["position"]),
+             json.dumps(doc.get("tags", []), ensure_ascii=False), doc["image"],
              doc.get("date", ""), json.dumps(doc.get("dates", []), ensure_ascii=False),
              doc.get("canvas", ""), int(doc.get("width", 0) or 0),
-             doc.get("cardMode", ""), node_id),
+             doc.get("cardMode", ""), doc["updatedAt"], node_id),
         )
         touch_project(conn, doc["projectId"])
     return doc
@@ -1132,9 +1592,13 @@ def update_node(node_id: str, payload: NodeUpdate):
 def delete_node(node_id: str):
     with db() as conn:
         row = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
-        conn.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
         if row:
+            maybe_backup(conn, row["projectId"])
+            edge_ids = [r["id"] for r in conn.execute(
+                "SELECT id FROM edges WHERE source = ? OR target = ?", (node_id, node_id))]
+            conn.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
             conn.execute("DELETE FROM edges WHERE source = ? OR target = ?", (node_id, node_id))
+            mark_deleted(conn, row["projectId"], [node_id], edge_ids)
             touch_project(conn, row["projectId"])
     return {"ok": True}
 
@@ -1150,15 +1614,10 @@ def create_edge(project_id: str, payload: EdgeCreate):
         ).fetchone()
         if existing:
             return edge_row(existing)
+        maybe_backup(conn, project_id)
         edge = EdgeModel(projectId=project_id, **payload.model_dump())
         d = edge.model_dump()
-        conn.execute(
-            "INSERT INTO edges (id, projectId, source, target, label, relType, color, points, "
-            "sourceHandle, targetHandle, shape) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (d["id"], d["projectId"], d["source"], d["target"], d["label"],
-             d["relType"], d["color"], json.dumps(d["points"]),
-             d["sourceHandle"], d["targetHandle"], d["shape"]),
-        )
+        insert_edge(conn, project_id, d, d["id"], d["source"], d["target"])
         touch_project(conn, project_id)
     return d
 
@@ -1169,16 +1628,18 @@ def update_edge(edge_id: str, payload: EdgeUpdate):
         row = conn.execute("SELECT * FROM edges WHERE id = ?", (edge_id,)).fetchone()
         if not row:
             raise fail(404, "edgeNotFound", "Link not found")
+        maybe_backup(conn, row["projectId"])
         doc = edge_row(row)
         updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
         doc.update(updates)
+        doc["updatedAt"] = now_iso()
         conn.execute(
             "UPDATE edges SET label = ?, relType = ?, color = ?, source = ?, target = ?, "
-            "points = ?, sourceHandle = ?, targetHandle = ?, shape = ? WHERE id = ?",
+            "points = ?, sourceHandle = ?, targetHandle = ?, shape = ?, updatedAt = ? WHERE id = ?",
             (doc["label"], doc["relType"], doc["color"], doc["source"], doc["target"],
              json.dumps(doc.get("points", [])),
              doc.get("sourceHandle", ""), doc.get("targetHandle", ""),
-             doc.get("shape", ""), edge_id),
+             doc.get("shape", ""), doc["updatedAt"], edge_id),
         )
         touch_project(conn, doc["projectId"])
     return doc
@@ -1188,8 +1649,10 @@ def update_edge(edge_id: str, payload: EdgeUpdate):
 def delete_edge(edge_id: str):
     with db() as conn:
         row = conn.execute("SELECT projectId FROM edges WHERE id = ?", (edge_id,)).fetchone()
-        conn.execute("DELETE FROM edges WHERE id = ?", (edge_id,))
         if row:
+            maybe_backup(conn, row["projectId"])
+            conn.execute("DELETE FROM edges WHERE id = ?", (edge_id,))
+            mark_deleted(conn, row["projectId"], edges=[edge_id])
             touch_project(conn, row["projectId"])
     return {"ok": True}
 

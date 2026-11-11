@@ -24,6 +24,7 @@ const { buildMenu } = require("./menu");
 const i18n = require("./i18n");
 const updater = require("./update");
 const feedback = require("./feedback");
+const { FolderSync } = require("./sync");
 
 const APP_ID = "com.bluegem.app";
 const PROJECT_ROOT = path.join(__dirname, "..");
@@ -49,6 +50,7 @@ if (process.env.PORTABLE_EXECUTABLE_DIR) {
 }
 
 let win = null;
+let folderSync = null;
 let backend = null;
 let windowState = null;
 let pendingProject = null; // файл, с которым запустили приложение
@@ -338,6 +340,10 @@ async function chooseProjectFile() {
 /* ------------------------------------------------------------------ */
 
 function registerIpc(dataDir) {
+  // Папка синхронизации: файлы проектов, которые разносит облачный клиент.
+  folderSync = new FolderSync(dataDir, () => win);
+  folderSync.register(ipcMain);
+
   // Синхронно — preload запрашивает конфигурацию до выполнения кода страницы.
   ipcMain.on("bg:config", (event) => {
     event.returnValue = {

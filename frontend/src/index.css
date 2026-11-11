@@ -526,6 +526,18 @@ kbd {
   letter-spacing: -0.015em;
 }
 .sw-settings-about { margin-top: 4px; font-size: 12px; color: var(--sw-text-dim); max-width: 560px; }
+/* Резервные копии: список строк с датой и кнопкой возврата. */
+.sw-backup-list { border: 1px solid var(--sw-border); border-radius: 10px; overflow: hidden; }
+.sw-backup-row {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  border-top: 1px solid var(--sw-border);
+}
+.sw-backup-row:first-child { border-top: 0; }
+.sw-backup-row:hover { background: var(--sw-hover); }
+.sw-backup-confirm {
+  background: var(--sw-accent); color: #fff; font-weight: 600;
+}
+.sw-backup-confirm:disabled { opacity: .7; }
 .sw-settings-body {
   flex: 1;
   min-height: 0;
@@ -1942,6 +1954,8 @@ kbd {
 }
 .sw-update-btn:hover { background: var(--sw-hover); color: var(--sw-text); }
 .sw-update-btn:active { transform: scale(0.97); }
+.sw-sync-btn.is-on { color: var(--sw-accent); }
+.sw-sync-btn.is-broken { color: #E8A23A; }
 .sw-update-btn.is-new {
   position: relative;
   background: color-mix(in srgb, var(--sw-ok) 16%, transparent);
@@ -2045,6 +2059,7 @@ kbd {
 .sw-npanel > .sw-sec-canvas { order: 2; margin-top: -12px; }
 .sw-npanel > .sw-sec-desc { order: 3; }
 .sw-npanel > .sw-sec-links { order: 4; }
+.sw-npanel > .sw-sec-mentions { order: 4; margin-top: -8px; }
 .sw-npanel > .sw-sec-tags { order: 5; }
 .sw-npanel > .sw-sec-fields { order: 6; }
 .sw-npanel > .sw-sec-image { order: 7; }
@@ -2251,6 +2266,13 @@ kbd {
     height 0.26s var(--sw-ease-emph), opacity 0.14s var(--sw-ease);
 }
 .sw-palette-enter { animation: swPaletteRow 0.32s var(--sw-ease-emph) backwards; }
+/* Совпадение в тексте узла: подсветка акцентом, без жёлтого маркера браузера. */
+.sw-palette-mark {
+  background: color-mix(in srgb, var(--sw-accent) 26%, transparent);
+  color: var(--sw-text);
+  border-radius: 3px;
+  padding: 0 1px;
+}
 @keyframes swPaletteRow {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
