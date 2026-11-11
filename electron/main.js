@@ -190,7 +190,11 @@ function createWindow() {
     show: false,
     backgroundColor: "#0A0A0F", // тёмная тема по умолчанию — без белой вспышки
     title: "BlueGem",
-    icon: path.join(PROJECT_ROOT, "build", "icon.ico"),
+    // Windows берёт .ico с набором размеров; Linux — PNG (окно и панель
+    // задач без него показывают пустую иконку, пока не прочтут .desktop).
+    icon: process.platform === "win32"
+      ? path.join(PROJECT_ROOT, "build", "icon.ico")
+      : path.join(__dirname, "app-icon.png"),
     autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

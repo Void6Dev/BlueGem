@@ -1,9 +1,8 @@
 import {
-  ArrowLeft, CalendarRange, ChevronDown, LayoutGrid, MoreHorizontal, PanelLeft, PanelLeftClose,
-  Plus, Rows3, Search, Settings, Share2,
+  ArrowLeft, CalendarRange, ChevronDown, MoreHorizontal, PanelLeft, PanelLeftClose,
+  Plus, Search, Settings, Share2,
 } from "lucide-react";
 import { Segmented } from "@/components/ui/segmented";
-import ScrollStrip from "@/components/ui/scroll-strip";
 import { useT } from "@/lib/i18n";
 
 /**
@@ -15,17 +14,22 @@ import { useT } from "@/lib/i18n";
  * открывавшая его окном поверх всего. Где искать нужное, зависело от того,
  * что сейчас открыто. Теперь у каждой вещи одно место:
  *
- *   слева  — где я: проект и его холсты;
- *   центр  — как смотрю: холст или таймлайн, и вид карточек;
+ *   слева  — где я: «Проект / Холст ▾» — путь, а не ряд вкладок;
+ *   центр  — как смотрю: холст или таймлайн;
  *   справа — что делаю: найти или выполнить команду, создать, настроить.
+ *
+ * Холсты — одна кнопка-переключатель со списком, а не полоса вкладок: на
+ * проекте из девяти страниц полоса обрывалась на третьей, и где остальные,
+ * было не видно. Вид карточек переехал в «⋯»: его меняют редко, а две иконки
+ * без подписей в центре панели читались как ещё один непонятный переключатель.
  *
  * Выпадающие списки («Создать», «⋯») — то же меню, что по правому клику:
  * у него уже есть подменю, галочки и клавиатура, второе такое незачем.
  */
 export default function EditorTopBar({
   projectName, sidebarOpen, onToggleSidebar, onBack,
-  canvases, activeCanvas, renderCanvasTab, onAddCanvas,
-  view, onView, cardMode, onCardMode,
+  canvasLabel, canvasCount, canvasRename, onOpenCanvases, onRenameCanvas,
+  view, onView,
   onOpenPalette, onOpenCreate, onOpenSettings, onOpenMore,
 }) {
   const tr = useT();
@@ -36,7 +40,7 @@ export default function EditorTopBar({
   };
 
   return (
-    <header className="sw-topbar" data-testid="editor-topbar">
+    <header className="sw-topbar sw-topbar-in" data-testid="editor-topbar">
       <div className="sw-topbar-left">
         <button
           type="button"
@@ -57,19 +61,23 @@ export default function EditorTopBar({
           <ArrowLeft className="w-4 h-4" />
         </button>
         <h1 className="sw-topbar-project" title={projectName}>{projectName}</h1>
-        <span className="sw-topbar-sep" aria-hidden="true" />
-        <ScrollStrip activeKey={activeCanvas} className="sw-topbar-tabs" data-testid="canvas-strip">
-          {canvases.map((c) => renderCanvasTab(c, `canvas-tab-${c.id}`))}
-        </ScrollStrip>
-        <button
-          type="button"
-          data-testid="add-canvas-btn"
-          onClick={onAddCanvas}
-          title={tr("editor.newCanvas")}
-          className="sw-topbar-icon"
-        >
-          <Plus className="w-3.5 h-3.5" />
-        </button>
+        <span className="sw-topbar-crumb" aria-hidden="true">/</span>
+        {/* Пока холст переименовывают, на месте кнопки стоит поле. */}
+        {canvasRename || (
+          <button
+            type="button"
+            data-testid="canvas-switcher"
+            onClick={(e) => onOpenCanvases(at(e))}
+            onDoubleClick={onRenameCanvas}
+            title={tr("editor.canvasSwitchHint")}
+            className="sw-canvas-switch"
+          >
+            <span className="sw-canvas-switch-dot" />
+            <span className="truncate">{canvasLabel}</span>
+            {canvasCount ? <span className="sw-canvas-switch-count">{canvasCount}</span> : null}
+            <ChevronDown className="w-3 h-3 shrink-0 opacity-60" />
+          </button>
+        )}
       </div>
 
       <div className="sw-topbar-center">
@@ -82,19 +90,6 @@ export default function EditorTopBar({
             { id: "timeline", label: tr("editor.timeline"), icon: CalendarRange },
           ]}
         />
-        {/* Вид карточек — рядом с видом холста: это тоже «как смотрю», и
-            переключают его по ходу работы. На таймлайне ему нечего менять. */}
-        {view === "canvas" && (
-          <Segmented
-            testIdPrefix="toolbar-card"
-            value={cardMode}
-            onChange={onCardMode}
-            options={[
-              { id: "compact", label: "", icon: Rows3, hint: tr("settings.cardStyles.compactHint") },
-              { id: "detailed", label: "", icon: LayoutGrid, hint: tr("settings.cardStyles.detailedHint") },
-            ]}
-          />
-        )}
       </div>
 
       <div className="sw-topbar-right">

@@ -1,25 +1,32 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { lazy, Suspense, useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
+import DockShell from "@/components/mobile/DockShell";
 import {
   X, Plus, Trash2, Copy, ImagePlus, Check, Loader2,
-  ArrowRight, ArrowLeft, Link2, ChevronDown, Maximize2, Minimize2,
+  ArrowRight, ArrowLeft, Link2, ChevronDown, Maximize2, Minimize2, MoreHorizontal,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { Button } from "@/components/ui/button";
 import { NodeIcon } from "@/components/NodeIcon";
-import MarkdownEditor from "@/components/MarkdownEditor";
+// Редактор с живым оформлением (CodeMirror) — отдельным куском: на телефоне
+// описание пишут в системном поле, и разбирать сотни килобайт движка там незачем.
+const MarkdownEditor = lazy(() => import("@/components/MarkdownEditor"));
 import DateField from "@/components/chrono/DateField";
 import { scrollWithin } from "@/lib/scrollWithin";
 import { hotkey } from "@/lib/hotkey";
+import { isMobileNow, pushBack, useIsMobile } from "@/lib/platform";
+import MobileDescription from "@/components/mobile/MobileDescription";
 import { tList, useT } from "@/lib/i18n";
 
 const RAIL_SPRING = { type: "spring", stiffness: 420, damping: 34 };
 
 /** Ползунок, который переезжает к полю, выбранному на карточке. */
 function FieldRail({ show }) {
-  if (!show) return null;
+  // На телефоне без ползунка: framer пересчитывает под него раскладку панели на
+  // каждой перерисовке, а слабому телефону каждая такая — заметная задержка.
+  if (!show || isMobileNow()) return null;
   return <motion.span layoutId="sw-field-rail" className="sw-field-rail" transition={RAIL_SPRING} />;
 }
 
@@ -51,11 +58,14 @@ export default function NodeEditorPanel({
   node, nodeTypes, onClose, onSave, onDelete, onDuplicate, onLiveChange, focusField,
   allNodes = [], allTags = [], connections = [], onOpenNode, onCreateNode, canvases = [],
   calendar, eras = [], fieldTemplates: projectFields, onChangeType, onLink, onUnlink,
+  // Телефон: узел — страница. «Назад» (к прошлому узлу или к миру), меню типа и «⋯».
+  onBack, onTypeMenu, onMore,
 }) {
   const tr = useT();
   const [draft, setDraft] = useState(null);
   const [seenType, setSeenType] = useState(null);
   const [typeOpen, setTypeOpen] = useState(false);
+  const [urlOpen, setUrlOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkQuery, setLinkQuery] = useState("");
   const [tagInput, setTagInput] = useState("");
@@ -65,6 +75,19 @@ export default function NodeEditorPanel({
   const [activeField, setActiveField] = useState(null); // "title" | "description"
   const fileRef = useRef(null);
   const descRef = useRef(null);
+  const mobile = useIsMobile();
+  const [details, setDetails] = useState(false);
+  const liveTimer = useRef(0);
+  const livePending = useRef({});
+  // Закрыли панель, не дождавшись паузы, — отдать холсту последнее.
+  const liveFlush = useRef(null);
+  liveFlush.current = () => {
+    clearTimeout(liveTimer.current);
+    const p = livePending.current;
+    livePending.current = {};
+    if (node && Object.keys(p).length) onLiveChange?.(node.id, p);
+  };
+  useEffect(() => () => liveFlush.current?.(), []);
   const titleRef = useRef(null);
   const scrollRef = useRef(null);
   const timerRef = useRef(null);
@@ -126,6 +149,9 @@ export default function NodeEditorPanel({
         // Имя живёт в шапке панели, вне прокрутки, — доводить до него нечего.
         // Прежний scrollWithin здесь теперь только сбрасывал содержимое наверх.
         titleRef.current?.focus({ preventScroll: true });
+        // Только что созданный узел: имя-заготовку («Персонаж») выделяем
+        // целиком — первая же буква заменит его на настоящее.
+        if (focusField.select) titleRef.current?.select?.();
         return;
       }
       const host = descRef.current?.element();
@@ -181,6 +207,9 @@ export default function NodeEditorPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [flush]);
 
+  // Кнопка «назад» на телефоне из блокнота тоже возвращает в панель.
+  useEffect(() => (descFull ? pushBack(() => setDescFull(false)) : undefined), [descFull]);
+
   // Esc из блокнота возвращает в панель, а не закрывает узел целиком. Слушаем
   // на перехвате и глушим событие: обработчик редактора висит на всплытии и
   // иначе успел бы закрыть всё разом.
@@ -204,7 +233,20 @@ export default function NodeEditorPanel({
   const set = (patch) => {
     setDraft((d) => ({ ...d, ...patch }));
     setStatus("dirty");
-    onLiveChange?.(draft.id, patch);
+    if (!mobile) {
+      onLiveChange?.(draft.id, patch);
+      return;
+    }
+    // Телефон: холст спрятан под шторкой, и пересобирать его на каждую букву
+    // значит тормозить набор ради того, чего не видно. Догоняет после паузы.
+    livePending.current = { ...livePending.current, ...patch };
+    clearTimeout(liveTimer.current);
+    const targetId = draft.id;
+    liveTimer.current = setTimeout(() => {
+      const p = livePending.current;
+      livePending.current = {};
+      onLiveChange?.(targetId, p);
+    }, 500);
   };
 
   const addTag = (value) => {
@@ -313,27 +355,100 @@ export default function NodeEditorPanel({
 
   const statusLabel = tr(`node.status.${status}`);
 
+  // Выбор типа — один и тот же список в шапке (компьютер) и в «Подробнее»
+  // (телефон).
+  const typePicker = (
+            <div className="mt-1.5 grid grid-cols-2 gap-1 p-1 rounded-lg border sw-border-c sw-surface" data-testid="node-type-picker">
+              {nodeTypes.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  data-testid={`node-type-option-${t.id}`}
+                  onClick={() => pickType(t.id)}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-left sw-hover
+                    ${t.id === draft.typeId ? "bg-[var(--sw-hover)]" : ""}`}
+                >
+                  <span className="w-4 h-4 rounded flex items-center justify-center shrink-0" style={{ background: t.color }}>
+                    <NodeIcon name={t.icon} className="w-2.5 h-2.5 text-white" />
+                  </span>
+                  <span className="truncate flex-1">{t.label}</span>
+                  {t.id === draft.typeId && <Check className="w-3 h-3 sw-accent-text shrink-0" />}
+                </button>
+              ))}
+            </div>
+  );
+
   return (
-    <motion.div
+    <DockShell
+      onClose={onClose}
+      testId="node-editor-panel"
+      detent="full"
       initial={{ opacity: 0, x: 12 }}
       animate={{ opacity: 1, x: 0 }}
-
       transition={{ type: "tween", duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
       className="sw-dock h-full w-[26rem] shrink-0 border-l sw-panel sw-border-c z-20 flex flex-col"
-      data-testid="node-editor-panel"
     >
       {/* Шапка панели повторяет шапку карточки: значок и название типа, а имя
           узла — крупной строкой под ними. Раньше здесь стояло имя мелким
           полужирным, и оно же дублировалось полем «Название» ниже. */}
+      {mobile ? (
+        // Телефон: узел — страница. Сверху «назад», тип (касание — сменить) и
+        // «⋯»; ниже крупное название — сразу в поле, без режима правки.
+        <div className="sw-npage-head sw-typed" style={{ "--node-color": activeType?.color || "#64748b" }}>
+          <div data-sheet-drag="" className="sw-npage-bar">
+            <button type="button" className="sw-icon-btn" onClick={onBack || onClose} data-testid="close-editor-btn" aria-label={tr("node.close")}>
+              <ArrowLeft className="w-[22px] h-[22px]" />
+            </button>
+            <button
+              type="button"
+              className="sw-npage-type"
+              data-testid="node-type-chip"
+              onClick={() => onTypeMenu?.(draft.id)}
+            >
+              <span className="sw-node-badge-icon"><NodeIcon name={activeType?.icon} className="text-white" /></span>
+              <span className="truncate">{activeType?.label || tr("node.noType")}</span>
+              <ChevronDown className="w-3.5 h-3.5 opacity-60 shrink-0" />
+            </button>
+            <span className="flex-1" />
+            <button type="button" className="sw-icon-btn" onClick={() => onMore?.(draft.id)} data-testid="node-more-btn" aria-label={tr("editor.more")}>
+              <MoreHorizontal className="w-[22px] h-[22px]" />
+            </button>
+          </div>
+          <AutoTextarea
+            ref={titleRef}
+            data-testid="node-title-input"
+            value={draft.title}
+            singleLine
+            maxRows={4}
+            placeholder={tr("common.untitled")}
+            onChange={(e) => set({ title: e.target.value })}
+            className="sw-npage-title bg-transparent border-0 px-0"
+          />
+        </div>
+      ) : (
       <div
         className="sw-typed px-6 pt-4 pb-3 border-b sw-border-c"
         style={{ "--node-color": activeType?.color || "#64748b" }}
       >
-        <div className="flex items-center gap-2 mb-2.5">
+        <div data-sheet-drag="" className="flex items-center gap-2 mb-2.5">
           <span className="sw-node-badge-icon is-lg">
             <NodeIcon name={activeType?.icon} className="text-white" />
           </span>
-          <span className="sw-node-type">{activeType?.label || tr("node.noType")}</span>
+          {/* Тип меняют прямо здесь: раньше ниже стояло отдельное поле «Тип»
+              с тем же значком и тем же названием — шапка и поле повторяли
+              друг друга. */}
+          <button
+            type="button"
+            data-testid="node-current-type"
+            onClick={() => setTypeOpen((v) => !v)}
+            aria-expanded={typeOpen}
+            title={tr("node.changeType")}
+            className="sw-type-trigger"
+          >
+            <span className="sw-node-type">{activeType?.label || tr("node.noType")}</span>
+            <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${typeOpen ? "rotate-180" : ""}`} />
+          </button>
+          <span className="flex-1" />
           <button onClick={onClose} data-testid="close-editor-btn" className="p-1.5 rounded-md sw-hover shrink-0" title={tr("node.close")}>
             <X className="w-4 h-4" />
           </button>
@@ -351,16 +466,33 @@ export default function NodeEditorPanel({
             className="sw-panel-title bg-transparent border-0 px-0"
           />
         </div>
+        {typeOpen && <div className="mt-2">{typePicker}</div>}
       </div>
+      )}
 
       {/* layoutScroll: ползунок поля живёт внутри прокрутки, и без этой подсказки
           framer меряет его позицию от несдвинутого контейнера — на прокрученной
           панели он уезжал мимо поля. */}
-      <motion.div layoutScroll ref={scrollRef} className="flex-1 sw-scroll-y px-6 py-6 space-y-6">
+      <motion.div
+        layoutScroll
+        ref={scrollRef}
+        className={mobile
+          ? `flex-1 sw-scroll-y sw-npage-body ${details ? "is-details" : ""}`
+          : "flex-1 sw-scroll-y px-6 py-5 sw-npanel"}
+      >
+        {/* Телефон: тип, даты, страница, картинка и характеристики — под
+            «Подробнее». На странице узла первым делом текст и связи. */}
+        {mobile && (
+          <button type="button" className="sw-npage-more" onClick={() => setDetails((v) => !v)} data-testid="node-details-toggle">
+            <span>{tr("mobile.details")}</span>
+            <ChevronDown className="w-4 h-4" />
+          </button>
+        )}
         {/* Тип выбирается здесь же. Раньше поле только выглядело выбором, а
             под ним стояла подсказка идти на холст и искать пункт в меню узла —
             поле, которое нельзя нажать, хуже, чем поле, которого нет. */}
-        <div>
+        {mobile && (
+        <div className="sw-sec sw-sec-type">
           <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("common.type")}</label>
           <button
             type="button"
@@ -380,30 +512,12 @@ export default function NodeEditorPanel({
             <span className="text-sm flex-1 truncate">{activeType?.label || tr("node.noType")}</span>
             <ChevronDown className={`w-3.5 h-3.5 sw-text-dim shrink-0 transition-transform ${typeOpen ? "rotate-180" : ""}`} />
           </button>
-          {typeOpen && (
-            <div className="mt-1.5 grid grid-cols-2 gap-1 p-1 rounded-lg border sw-border-c sw-surface" data-testid="node-type-picker">
-              {nodeTypes.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  data-testid={`node-type-option-${t.id}`}
-                  onClick={() => pickType(t.id)}
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-left sw-hover
-                    ${t.id === draft.typeId ? "bg-[var(--sw-hover)]" : ""}`}
-                >
-                  <span className="w-4 h-4 rounded flex items-center justify-center shrink-0" style={{ background: t.color }}>
-                    <NodeIcon name={t.icon} className="w-2.5 h-2.5 text-white" />
-                  </span>
-                  <span className="truncate flex-1">{t.label}</span>
-                  {t.id === draft.typeId && <Check className="w-3 h-3 sw-accent-text shrink-0" />}
-                </button>
-              ))}
-            </div>
-          )}
+          {typeOpen && typePicker}
         </div>
+        )}
 
         {/* Даты узла — их может быть несколько — и холст, на котором он лежит. */}
-        <div>
+        <div className="sw-sec sw-sec-dates">
           <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.date")}</label>
           <div className="mt-2">
             <DateField
@@ -418,7 +532,7 @@ export default function NodeEditorPanel({
         </div>
 
         {canvases.length > 1 && (
-          <div>
+          <div className="sw-sec sw-sec-canvas">
             <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.canvas")}</label>
             <select
               data-testid="node-canvas-select"
@@ -433,10 +547,13 @@ export default function NodeEditorPanel({
           </div>
         )}
 
-        <div className="relative pl-3" data-testid="field-description">
+        <div className="sw-sec sw-sec-desc relative pl-3" data-testid="field-description">
           <FieldRail show={activeField === "description"} />
+          {!mobile && (
           <div className="flex items-center justify-between gap-2">
             <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("common.description")}</label>
+            {/* Блокнот на весь экран — на телефоне не нужен: там писать и так открывают во весь экран. */}
+            {!mobile && (
             <button
               data-testid="desc-expand-btn"
               onClick={() => setDescFull(true)}
@@ -445,7 +562,9 @@ export default function NodeEditorPanel({
             >
               <Maximize2 className="w-3.5 h-3.5" />
             </button>
+            )}
           </div>
+          )}
           {descFull ? (
             // Текст уехал в блокнот. На его месте заглушка, а не второй
             // редактор: два экземпляра на один и тот же текст сбивали бы
@@ -458,12 +577,19 @@ export default function NodeEditorPanel({
               <Maximize2 className="w-4 h-4" />
               {tr("node.openedFull")}
             </button>
+          ) : mobile ? (
+            <div>
+              <MobileDescription
+                key={nodeId}
+                {...descEditorProps}
+              />
+            </div>
           ) : (
             <div
-              className="mt-2 rounded-lg border sw-border-c px-3.5 py-3"
-              style={{ background: "color-mix(in srgb, var(--sw-bg) 55%, transparent)" }}
+              className="sw-desc-box mt-2"
               onFocusCapture={() => setActiveField("description")}
             >
+              <Suspense fallback={<div className="min-h-[8rem]" />}>
               <MarkdownEditor
                 // key по узлу: редактор держит своё состояние правки, и под
                 // чужой текст его надо заводить заново, а не донашивать прежнее.
@@ -474,18 +600,23 @@ export default function NodeEditorPanel({
                 listClassName="min-h-[8rem]"
                 toolbarScroll
               />
+              </Suspense>
             </div>
           )}
+          {!mobile && (
+          // Подсказка про разметку нужна, пока текста нет: дальше она
+          // висела под каждым описанием строкой, которую уже никто не читает.
           <p className="mt-1.5 text-[11px] sw-text-dim flex items-center justify-between gap-2">
-            <span>{tr("node.markdownHint", { code: `[[${tr("edge.node")}]]` })}</span>
-            <span className="font-mono-sw shrink-0">{(draft.description || "").length}</span>
+            <span>{draft.description ? "" : tr("node.markdownHint", { code: `[[${tr("edge.node")}]]` })}</span>
+            <span className="font-mono-sw shrink-0">{(draft.description || "").length || ""}</span>
           </p>
+          )}
         </div>
 
         {/* Связи. Завести и убрать связь можно отсюда же: раньше список был
             только для чтения, а связь тянули мышью от точки на карточке —
             к узлу за краем экрана или на другом холсте её было не провести. */}
-        <div>
+        <div className="sw-sec sw-sec-links">
           <div className="flex items-center justify-between gap-2">
             <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim flex items-center gap-2">
               <Link2 className="w-3 h-3" /> {tr("node.links")} {connections.length > 0 && `(${connections.length})`}
@@ -575,7 +706,7 @@ export default function NodeEditorPanel({
         </div>
 
         {/* Image */}
-        <div>
+        <div className="sw-sec sw-sec-image">
           <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.image")}</label>
           {draft.image ? (
             <div className="mt-2 relative">
@@ -589,30 +720,47 @@ export default function NodeEditorPanel({
               </button>
             </div>
           ) : (
+            // Пустое изображение — одна строка: «загрузить» и «по ссылке».
+            // Раньше это был блок в сотню пикселей и поле под ним, и он
+            // стоял у каждого узла, хотя картинка есть у немногих.
             <div className="mt-2 space-y-2">
-              <button
-                data-testid="upload-image-btn"
-                onClick={() => fileRef.current?.click()}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => { e.preventDefault(); readImage(e.dataTransfer.files?.[0]); }}
-                className="w-full flex items-center justify-center gap-2 py-6 rounded-lg border border-dashed sw-border-c text-sm sw-text-dim sw-hover"
-              >
-                <ImagePlus className="w-4 h-4" /> {tr("node.upload")}
-              </button>
-              <Input
-                data-testid="image-url-input"
-                value={draft.image}
-                onChange={(e) => set({ image: e.target.value })}
-                placeholder={tr("node.imageUrl")}
-                className="bg-transparent sw-border-c text-xs h-9"
-              />
+              <div className="flex items-center gap-2">
+                <button
+                  data-testid="upload-image-btn"
+                  onClick={() => fileRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => { e.preventDefault(); readImage(e.dataTransfer.files?.[0]); }}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg border border-dashed sw-border-c text-xs sw-text-dim sw-hover"
+                >
+                  <ImagePlus className="w-3.5 h-3.5" /> {tr("node.upload")}
+                </button>
+                <button
+                  type="button"
+                  data-testid="image-url-toggle"
+                  onClick={() => setUrlOpen((v) => !v)}
+                  aria-pressed={urlOpen}
+                  className="px-3 py-2.5 rounded-lg border sw-border-c text-xs sw-text-dim sw-hover shrink-0"
+                >
+                  {tr("node.imageByUrl")}
+                </button>
+              </div>
+              {urlOpen && (
+                <Input
+                  autoFocus
+                  data-testid="image-url-input"
+                  value={draft.image}
+                  onChange={(e) => set({ image: e.target.value })}
+                  placeholder={tr("node.imageUrl")}
+                  className="bg-transparent sw-border-c text-xs h-9"
+                />
+              )}
             </div>
           )}
           <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} className="hidden" />
         </div>
 
         {/* Tags */}
-        <div>
+        <div className="sw-sec sw-sec-tags">
           <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.tagsLabel")}</label>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {draft.tags.map((t) => (
@@ -660,7 +808,7 @@ export default function NodeEditorPanel({
         </div>
 
         {/* Custom fields */}
-        <div>
+        <div className="sw-sec sw-sec-fields">
           <div className="flex items-center justify-between mb-3">
             <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.customFields")}</label>
             <button
@@ -713,6 +861,7 @@ export default function NodeEditorPanel({
         </div>
       </motion.div>
 
+      {!mobile && (
       <div className="px-6 py-4 border-t sw-border-c flex items-center gap-2">
         {confirmDelete ? (
           <>
@@ -763,6 +912,7 @@ export default function NodeEditorPanel({
           </>
         )}
       </div>
+      )}
 
       {/* Блокнот на весь экран. Портал в body обязателен: у панели есть
           transform от framer, а он делает её точкой отсчёта для fixed —
@@ -778,7 +928,7 @@ export default function NodeEditorPanel({
               initial={{ opacity: 0, scale: 0.985 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-              className="fixed inset-0 z-[60] flex flex-col sw-panel"
+              className="fixed inset-0 z-[80] flex flex-col sw-panel sw-fullscreen"
               data-testid="desc-fullscreen"
             >
               <div className="flex items-center justify-between gap-3 px-6 py-3 border-b sw-border-c">
@@ -810,12 +960,15 @@ export default function NodeEditorPanel({
                   плохо, а блокнот — это про чтение и письмо. */}
               <div className="flex-1 min-h-0 flex justify-center">
                 <div className="w-full max-w-[54rem] h-full flex flex-col px-6 sm:px-10 py-5 gap-3">
+                  <Suspense fallback={null}>
                   <MarkdownEditor
                     key={`full-${nodeId}`}
                     {...descEditorProps}
+                    large
                     className="flex-1 min-h-0 flex flex-col gap-3"
                     listClassName="sw-mde-lg flex-1 min-h-0 sw-scroll-y pr-1"
                   />
+                  </Suspense>
                   <p className="text-[11px] sw-text-dim flex items-center justify-between gap-2 shrink-0">
                     <span>{tr("node.markdownHint", { code: `[[${tr("edge.node")}]]` })}</span>
                     <span className="font-mono-sw shrink-0">{(draft.description || "").length}</span>
@@ -827,6 +980,6 @@ export default function NodeEditorPanel({
         ),
         document.body
       )}
-    </motion.div>
+    </DockShell>
   );
 }

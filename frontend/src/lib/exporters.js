@@ -1,5 +1,6 @@
 // Turning a project into files the author can keep, share or version.
 import { isDesktop, saveTextFile } from "@/lib/desktop";
+import { isNative, shareTextFile } from "@/lib/platform";
 import { t } from "@/lib/i18n";
 import {
   entryLabel, formatRange, normalizeEntries, resolveCalendar, resolveEras,
@@ -25,6 +26,9 @@ function download(filename, text, mime = "application/json") {
  * загрузка. Возвращает {saved, canceled, path} — вызывающий решает, что сказать.
  */
 async function writeFile(filename, text, { mime = "application/json", filters } = {}) {
+  // Телефон: системное меню «Поделиться» — сохранить в «Файлы», на Диск,
+  // отправить в мессенджер. Загрузки по ссылке в WebView нет.
+  if (isNative) return shareTextFile(filename, text, { title: filename });
   if (!isDesktop) {
     download(filename, text, mime);
     return { saved: true };

@@ -1,0 +1,18 @@
+# Зависимости и сборки — всё это воспроизводится командами из README.
+node_modules/
+frontend/build/
+release/
+backend/dist/
+backend/build/
+backend/.venv/
+backend/.pyinstaller/
+__pycache__/
+
+# Android: Gradle и Android Studio кладут сюда своё (правила для самого
+# проекта — в frontend/android/.gitignore).
+.gradle/
+local.properties
+*.keystore
+*.jks
+# Отладочный ключ Android — общий намеренно, см. frontend/android/app/build.gradle.
+!frontend/android/app/bluegem-debug.keystore

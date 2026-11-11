@@ -88,7 +88,7 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreate }) {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sw-tpl-grid grid grid-cols-1 sm:grid-cols-3 gap-3">
               {rows.map((tpl) => {
                 const Icon = TEMPLATE_ICONS[tpl.id] || CircleDashed;
                 const on = picked === tpl.id;
@@ -207,7 +207,7 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreate }) {
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-3 pt-1">
+            <div className="sw-dialog-foot flex items-center justify-between gap-3 pt-1">
               <span className="font-mono-sw text-[11px] sw-text-mute">
                 {t("dashboard.templateSummary", {
                   types: active?.types?.length || 0,

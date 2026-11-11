@@ -1,301 +1,414 @@
 import {
-  forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo,
-  useRef, useState,
+  forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from "react";
-import { Code2, FileText } from "lucide-react";
-import { renderMarkdown } from "@/lib/miniMarkdown";
-import { hotkey } from "@/lib/hotkey";
+import { createPortal } from "react-dom";
+import {
+  Bold, Check, CheckSquare, Code2, FileText, Heading, Italic, Link2, List, ListOrdered,
+  Minus, Quote, Strikethrough, Table2,
+} from "lucide-react";
+import {
+  Annotation, Compartment, EditorSelection, EditorState, Prec, StateEffect, Transaction,
+} from "@codemirror/state";
+import {
+  Decoration, EditorView, ViewPlugin, WidgetType, keymap, placeholder as cmPlaceholder, tooltips,
+} from "@codemirror/view";
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { LanguageSupport, syntaxTree } from "@codemirror/language";
+import { markdownKeymap, markdownLanguage } from "@codemirror/lang-markdown";
+import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { useT } from "@/lib/i18n";
+import { haptic, useIsMobile } from "@/lib/platform";
+import "@/components/markdown-editor.css";
 
 /**
- * Описание узла — блокнот.
+ * Описание узла — блокнот с живым оформлением, как в Obsidian.
  *
- * Прошлая попытка выглядела так: поле ввода и подсветка разметки, лежащие друг
- * на друге. Строки совпадали до пикселя, курсор вставал куда надо — и всё
- * равно человек всё время смотрел на разметку, а не на текст. Звёздочки,
- * решётки и квадратные скобки нельзя было спрятать: спрятать знак значит
- * сдвинуть текст относительно поля ввода и потерять то самое совпадение.
+ * Пишут обычный текст, а видят его уже оформленным: заголовок крупным, жирный
+ * жирным, пункты списка с точками, задачи с галочками, [[ссылки на узлы]]
+ * плашками. Значки разметки появляются только в той строке, где стоит курсор,
+ * — там их и правят; в остальных строках их нет. Ушли из поля — весь текст
+ * показан собранным.
  *
- * Здесь другая модель. Документ показан собранным — тем же разбором, что и на
- * карточке холста и в панели просмотра, — а правится тот блок, в который
- * ткнули: абзац, заголовок, пункт списка, таблица. Он один на всё время правки
- * превращается в обычное поле ввода со своей разметкой, остальные остаются
- * текстом. Ушли из блока — он снова собрался.
+ * Прошлый блокнот превращал абзац под пальцем в поле с сырой разметкой и
+ * обратно; на телефоне это было мучением. Здесь поле одно на весь текст,
+ * и это CodeMirror — тот же движок, что у Obsidian: ввод с телефонной
+ * клавиатуры, автозамена, выделение и отмена работают так, как ждёт система.
  *
- * Почему блоком, а не всем документом целиком: поле ввода остаётся настоящей
- * textarea. Курсор, выделение, отмена, автозамена и ввод иероглифов работают
- * сами — ничего из этого не пришлось бы переписывать, а в contenteditable
- * пришлось бы всё.
- *
- * Разметка целиком никуда не делась: кнопка справа показывает весь документ
- * исходником — с подсветкой, как было. Это и запасной выход, и способ выделить
- * и скопировать всё разом.
+ * Хранится по-прежнему markdown, знак в знак: редактор ничего не переписывает
+ * сам, только показывает. Старые описания открываются как были.
  */
 
-const FENCE = /^\s*(```|~~~)/;
-// Маркер строки списка или цитаты — то, что Enter должен продолжить сам.
-const MARKER = /^(\s*)([-*+] \[[ xX]\] |[-*+] |\d+\. |> )/;
-const HEADING = /^(\s{0,3}#{1,6}\s+)(.*)$/;
-const QUOTE = /^(\s*>\s?)(.*)$/;
-const BULLET = /^(\s*(?:[-*+]|\d+\.)\s+(?:\[[ xX]\]\s+)?)(.*)$/;
-const HR = /^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;
-const SOURCE_KEY = "bluegem:mdSource";
+/* ------------------------------------------------------------------ */
+/* Живое оформление                                                    */
+/* ------------------------------------------------------------------ */
 
-/**
- * Разбить документ на блоки.
- *
- * Блок — то, что человек правит целиком. Границей служит пустая строка, внутри
- * ограды из кавычек её нет. Пустые строки остаются в конце своего блока,
- * поэтому склейка блоков возвращает исходный текст знак в знак — на этом всё
- * и держится: править можно один блок, а сохраняется всегда весь документ.
- */
-export function splitBlocks(text) {
-  const src = text || "";
-  const out = [];
-  let start = 0;
-  let i = 0;
-  let fence = null;
-  let content = false;
-  for (;;) {
-    const nl = src.indexOf("\n", i);
-    const end = nl === -1 ? src.length : nl;
-    const line = src.slice(i, end);
-    const f = FENCE.exec(line);
-    if (fence) { if (f) fence = null; } else if (f) fence = f[1];
-    const blank = !line.trim();
-    if (!fence && blank && content) {
-      const stop = nl === -1 ? src.length : nl + 1;
-      out.push(src.slice(start, stop));
-      start = stop;
-      content = false;
-    } else if (!blank) content = true;
-    if (nl === -1) break;
-    i = nl + 1;
+const refresh = StateEffect.define();
+// Текст, пришедший снаружи (отмена в редакторе узла, откат), — не правка
+// человека: его не надо ни отдавать обратно, ни класть в историю отмены.
+const external = Annotation.define();
+const hide = Decoration.replace({});
+const mark = (cls) => Decoration.mark({ class: cls });
+const lineDeco = (cls) => Decoration.line({ class: cls });
+const MARKER = /^(\s*)([-*+] \[[ xX]\] |[-*+] |\d+[.)] |> )/;
+const WIKI = /\[\[([^\]\n]+?)\]\]/g;
+
+class BulletWidget extends WidgetType {
+  eq() { return true; }
+  toDOM() {
+    const s = document.createElement("span");
+    s.className = "cm-md-bullet";
+    s.textContent = "•";
+    return s;
   }
-  if (start < src.length || !out.length) out.push(src.slice(start));
-  // Пустые строки, набежавшие между блоками, отдаём предыдущему: сами по себе
-  // они не блок, но из склейки исчезнуть не должны.
-  const merged = [];
-  for (const b of out) {
-    if (!b.trim() && merged.length) merged[merged.length - 1] += b;
-    else merged.push(b);
-  }
-  return merged;
 }
 
-/**
- * Склеить блоки обратно в документ.
- *
- * Не просто join: блок мог остаться без пустой строки на конце — например,
- * если его выделили целиком и набрали заново. Тогда он слипся бы со
- * следующим, и два абзаца стали бы одним прямо под руками. Разделитель
- * дописываем только там, где его не хватает.
- */
-function joinBlocks(bs) {
-  let out = "";
-  for (let i = 0; i < bs.length; i += 1) {
-    const b = bs[i];
-    out += b;
-    if (i < bs.length - 1 && b.trim() && !b.endsWith("\n")) out += "\n\n";
+class CheckWidget extends WidgetType {
+  constructor(checked, pos) {
+    super();
+    this.checked = checked;
+    this.pos = pos;
+  }
+  eq(o) { return o.checked === this.checked && o.pos === this.pos; }
+  toDOM(view) {
+    const box = document.createElement("span");
+    box.className = `cm-md-check${this.checked ? " is-on" : ""}`;
+    box.setAttribute("role", "checkbox");
+    box.setAttribute("aria-checked", String(this.checked));
+    const toggle = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      haptic("tick");
+      view.dispatch({ changes: { from: this.pos + 1, to: this.pos + 2, insert: this.checked ? " " : "x" } });
+    };
+    box.addEventListener("mousedown", toggle);
+    return box;
+  }
+  ignoreEvent() { return true; }
+}
+
+class RuleWidget extends WidgetType {
+  eq() { return true; }
+  toDOM() {
+    const s = document.createElement("span");
+    s.className = "cm-md-hr";
+    return s;
+  }
+}
+
+const bullet = Decoration.replace({ widget: new BulletWidget() });
+const rule = Decoration.replace({ widget: new RuleWidget() });
+
+/** Строки, в которых сейчас курсор или выделение: в них разметка видна. */
+function activeLines(view) {
+  const out = new Set();
+  if (!view.hasFocus) return out;
+  const { doc } = view.state;
+  for (const r of view.state.selection.ranges) {
+    const last = doc.lineAt(r.to).number;
+    for (let n = doc.lineAt(r.from).number; n <= last; n += 1) out.add(n);
   }
   return out;
 }
 
-/**
- * Смещение в разметке по смещению в собранном тексте.
- *
- * Собранный текст — подпоследовательность разметки: разбор знаки убирает, но
- * не добавляет. Значит, достаточно идти по обеим строкам сразу, пропуская
- * в разметке всё, что до следующей совпавшей буквы, — и ткнувший в середину
- * абзаца попадает курсором ровно туда, куда ткнул.
- */
-function sourceOffset(src, visible, upto) {
-  let si = 0;
-  for (let vi = 0; vi < upto && vi < visible.length; vi += 1) {
-    const ch = visible[vi];
-    while (si < src.length && src[si] !== ch) si += 1;
-    si += 1;
+function inCode(tree, pos) {
+  for (let n = tree.resolveInner(pos, 1); n; n = n.parent) {
+    if (n.name === "InlineCode" || n.name === "FencedCode" || n.name === "CodeBlock") return true;
   }
-  return Math.min(si, src.length);
+  return false;
 }
 
-/** Сколько знаков собранного текста левее точки, куда ткнули. */
-function visibleOffsetAt(root, x, y) {
-  const range = document.caretRangeFromPoint
-    ? document.caretRangeFromPoint(x, y)
-    : document.caretPositionFromPoint?.(x, y);
-  if (!range) return null;
-  const node = range.startContainer || range.offsetNode;
-  const offset = range.startOffset ?? range.offset ?? 0;
-  if (!node || !root.contains(node)) return null;
-  let seen = 0;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let cur = walker.nextNode();
-  while (cur) {
-    if (cur === node) return seen + offset;
-    seen += cur.textContent.length;
-    cur = walker.nextNode();
-  }
-  return seen;
-}
-
-/* ---------------- подсветка разметки (режим «разметка целиком») ----------------
-   Порядок важен: `код` ловим первым, иначе звёздочки внутри него станут
-   разметкой. Жирный до курсива по той же причине. */
-const HL_INLINE = new RegExp([
-  "`[^`\\n]+`",
-  "\\*\\*[^\\n]+?\\*\\*",
-  "__[^\\n]+?__",
-  "~~[^\\n]+?~~",
-  "\\*[^*\\n]+\\*",
-  "\\[\\[[^\\]\\n]+\\]\\]",
-  "\\[\\^[^\\]\\s]+\\]",
-  "\\[[^\\]\\n]*\\]\\([^)\\n]*\\)",
-].join("|"), "g");
-
-/** Знак разметки и его содержимое: снаружи гасим, внутри показываем. */
-function paired(tok, n, cls, key) {
-  return (
-    <span key={key} className={cls}>
-      <span className="sw-hl-mark">{tok.slice(0, n)}</span>
-      {tok.slice(n, tok.length - n)}
-      <span className="sw-hl-mark">{tok.slice(tok.length - n)}</span>
-    </span>
-  );
-}
-
-function inlineToken(tok, key) {
-  if (tok.startsWith("`")) return paired(tok, 1, "sw-hl-code", key);
-  if (tok.startsWith("**") || tok.startsWith("__")) return paired(tok, 2, "sw-hl-strong", key);
-  if (tok.startsWith("~~")) return paired(tok, 2, "sw-hl-del", key);
-  if (tok.startsWith("[[")) return paired(tok, 2, "sw-hl-wiki", key);
-  if (tok.startsWith("[^")) return <span key={key} className="sw-hl-wiki">{tok}</span>;
-  if (tok.startsWith("[")) {
-    const cut = tok.indexOf("](");
-    return (
-      <span key={key}>
-        <span className="sw-hl-mark">[</span>
-        <span className="sw-hl-wiki">{tok.slice(1, cut)}</span>
-        <span className="sw-hl-mark">{tok.slice(cut)}</span>
-      </span>
-    );
-  }
-  return paired(tok, 1, "sw-hl-em", key);
-}
-
-function hlInline(text, key) {
-  if (!text) return text;
+function build(view, ctx) {
+  const { state } = view;
+  const { doc } = state;
+  const tree = syntaxTree(state);
+  const active = activeLines(view);
+  const isActive = (pos) => active.has(doc.lineAt(pos).number);
   const out = [];
-  let last = 0;
-  for (const m of text.matchAll(HL_INLINE)) {
-    if (m.index > last) out.push(text.slice(last, m.index));
-    out.push(inlineToken(m[0], `${key}-${m.index}`));
-    last = m.index + m[0].length;
-  }
-  if (!out.length) return text;
-  if (last < text.length) out.push(text.slice(last));
-  return out;
-}
-
-/** Одна строка документа. Внутри блока кода разметки нет — там текст дословный. */
-function hlLine(text, key, inFence) {
-  if (inFence || FENCE.test(text)) return <span className="sw-hl-fence">{text}</span>;
-  if (HR.test(text)) return <span className="sw-hl-mark">{text}</span>;
-  const h = text.match(HEADING);
-  if (h) {
-    return (
-      <span className="sw-hl-head">
-        <span className="sw-hl-mark">{h[1]}</span>
-        {hlInline(h[2], key)}
-      </span>
-    );
-  }
-  const q = text.match(QUOTE);
-  if (q) {
-    return (
-      <span className="sw-hl-quote">
-        <span className="sw-hl-mark">{q[1]}</span>
-        {hlInline(q[2], key)}
-      </span>
-    );
-  }
-  const b = text.match(BULLET);
-  if (b) {
-    return (
-      <>
-        <span className="sw-hl-bullet">{b[1]}</span>
-        {hlInline(b[2], key)}
-      </>
-    );
-  }
-  if (text.trimStart().startsWith("|")) return <span className="sw-hl-table">{text}</span>;
-  return hlInline(text, key);
-}
-
-/**
- * Подсветка. Перерисовывается на каждый набранный знак, поэтому вынесена в
- * отдельный memo: пока строка не менялась, дерево не пересобирается.
- */
-const Highlight = memo(function Highlight({ text }) {
-  const lines = text.split("\n");
-  let fence = false;
-  return (
-    <div className="sw-mde-hl sw-mde-type" aria-hidden="true">
-      {lines.map((raw, i) => {
-        const opening = FENCE.test(raw);
-        const inside = fence;
-        if (opening) fence = !fence;
-        return (
-          // Перенос дописываем сами: без него строки склеились бы в одну.
-          <span key={i}>{hlLine(raw, `l${i}`, inside && !opening)}{"\n"}</span>
-        );
-      })}
-    </div>
-  );
-});
-
-/** Заголовок правится своим кеглем: иначе щелчок по нему ронял бы строку вниз. */
-function blockClass(source) {
-  const h = HEADING.exec(source);
-  if (h) return `sw-mde-h sw-mde-h${h[1].trim().length}`;
-  if (QUOTE.test(source)) return "sw-mde-q";
-  if (FENCE.test(source)) return "sw-mde-pre";
-  return "";
-}
-
-/**
- * Собранный блок. memo по строке разметки: пока блок не правили, его дерево не
- * пересобирается — а пересобираться иначе пришлось бы всему документу на
- * каждую букву в соседнем абзаце.
- */
-const Block = memo(function Block({ source, index, onActivate, view }) {
-  const ref = useRef(null);
-  const blank = !source.trim();
-
-  // По отпусканию, а не по нажатию: иначе из собранного текста нельзя было бы
-  // выделить кусок мышью — правка перехватывала бы протяжку в самом начале.
-  // Выделили — значит выделяли, а не правили.
-  const onMouseUp = (e) => {
-    // Ссылка на узел остаётся ссылкой: по ней переходят, а не правят её.
-    if (e.button !== 0 || e.target.closest("a, button, input")) return;
-    const sel = window.getSelection();
-    if (sel && !sel.isCollapsed) return;
-    const root = ref.current;
-    const at = root ? visibleOffsetAt(root, e.clientX, e.clientY) : null;
-    onActivate(index, at === null ? null : sourceOffset(source, root.textContent, at));
+  const lines = (from, to, cls) => {
+    const last = doc.lineAt(to).number;
+    for (let n = doc.lineAt(from).number; n <= last; n += 1) out.push(lineDeco(cls).range(doc.line(n).from));
+  };
+  /** Значок разметки: вне строки с курсором — спрятать, в ней — приглушить. */
+  const markOrHide = (from, to, withSpace = false) => {
+    if (to <= from) return;
+    if (isActive(from)) { out.push(mark("cm-md-mark").range(from, to)); return; }
+    const end = withSpace && doc.sliceString(to, to + 1) === " " ? to + 1 : to;
+    out.push(hide.range(from, end));
   };
 
-  return (
-    <div
-      ref={ref}
-      data-testid={`md-block-${index}`}
-      className={`sw-mde-block sw-md sw-md-doc ${blank ? "is-blank" : ""}`}
-      onMouseUp={onMouseUp}
-    >
-      {blank ? <p>&nbsp;</p> : renderMarkdown(source, view)}
-    </div>
-  );
-});
+  for (const { from, to } of view.visibleRanges) {
+    // [[Ссылки]] — первыми: разбор markdown видит в них обычные скобки, и
+    // его правила для ссылок их задевать не должны.
+    const wiki = [];
+    const text = doc.sliceString(from, to);
+    WIKI.lastIndex = 0;
+    for (let m = WIKI.exec(text); m; m = WIKI.exec(text)) {
+      const a = from + m.index;
+      const b = a + m[0].length;
+      if (inCode(tree, a)) continue;
+      wiki.push([a, b]);
+      const title = m[1].trim();
+      const known = ctx.current.byTitle.has(title.toLowerCase());
+      const live = !isActive(a);
+      const cls = `cm-md-wiki${known ? "" : " is-missing"}${live ? " is-link" : ""}`;
+      const attrs = { class: cls, "data-wiki": title };
+      if (live) {
+        out.push(hide.range(a, a + 2));
+        out.push(Decoration.mark({ attributes: attrs }).range(a + 2, b - 2));
+        out.push(hide.range(b - 2, b));
+      } else {
+        out.push(Decoration.mark({ attributes: attrs }).range(a, b));
+      }
+    }
+    const clash = (a, b) => wiki.some(([x, y]) => a < y && b > x);
+
+    tree.iterate({
+      from,
+      to,
+      enter: (node) => {
+        const { name } = node;
+        if (clash(node.from, node.to) && /^(Link|LinkMark|URL|LinkLabel)$/.test(name)) return false;
+        const h = /^(?:ATX|Setext)Heading(\d)$/.exec(name);
+        if (h) { lines(node.from, node.to, `cm-md-h${h[1]}`); return undefined; }
+        switch (name) {
+          case "HeaderMark":
+            if (node.node.parent?.name.startsWith("ATX")) markOrHide(node.from, node.to, true);
+            else out.push(mark("cm-md-mark").range(node.from, node.to));
+            break;
+          case "EmphasisMark":
+          case "StrikethroughMark":
+            markOrHide(node.from, node.to);
+            break;
+          case "CodeMark":
+            if (node.node.parent?.name === "InlineCode") markOrHide(node.from, node.to);
+            else lines(node.from, node.to, "cm-md-fence");
+            break;
+          case "CodeInfo":
+            out.push(mark("cm-md-mark").range(node.from, node.to));
+            break;
+          case "StrongEmphasis": out.push(mark("cm-md-strong").range(node.from, node.to)); break;
+          case "Emphasis": out.push(mark("cm-md-em").range(node.from, node.to)); break;
+          case "Strikethrough": out.push(mark("cm-md-strike").range(node.from, node.to)); break;
+          case "InlineCode": out.push(mark("cm-md-code").range(node.from, node.to)); break;
+          case "Link": out.push(mark("cm-md-link").range(node.from, node.to)); break;
+          case "LinkMark":
+            if (node.node.parent?.name === "Link") markOrHide(node.from, node.to);
+            break;
+          case "URL":
+            if (node.node.parent?.name === "Link") markOrHide(node.from, node.to);
+            break;
+          case "LinkTitle":
+            markOrHide(node.from, node.to);
+            break;
+          case "Blockquote": lines(node.from, node.to, "cm-md-quote"); break;
+          case "QuoteMark": markOrHide(node.from, node.to, true); break;
+          case "ListMark": {
+            const item = node.node.parent;
+            const list = item?.parent?.name;
+            // У задачи вместо точки — галочка, как в Obsidian: две отметки
+            // на одной строке только спорили бы друг с другом.
+            if (list === "BulletList" && !isActive(node.from) && item?.getChild("Task")) {
+              markOrHide(node.from, node.to, true);
+            } else if (list === "BulletList" && !isActive(node.from)) out.push(bullet.range(node.from, node.to));
+            else out.push(mark(list === "OrderedList" ? "cm-md-olmark" : "cm-md-mark").range(node.from, node.to));
+            break;
+          }
+          case "TaskMarker":
+            if (!isActive(node.from)) {
+              const checked = /x/i.test(doc.sliceString(node.from, node.to));
+              out.push(Decoration.replace({ widget: new CheckWidget(checked, node.from) }).range(node.from, node.to));
+            }
+            break;
+          case "FencedCode":
+          case "CodeBlock":
+            lines(node.from, node.to, "cm-md-codeblock");
+            break;
+          case "HorizontalRule":
+            if (!isActive(node.from)) out.push(rule.range(node.from, node.to));
+            else out.push(mark("cm-md-mark").range(node.from, node.to));
+            break;
+          case "Table": lines(node.from, node.to, "cm-md-table"); break;
+          default:
+        }
+        return undefined;
+      },
+    });
+  }
+  return Decoration.set(out, true);
+}
+
+function livePreview(ctx) {
+  return ViewPlugin.fromClass(class {
+    constructor(view) { this.decorations = build(view, ctx); }
+    update(u) {
+      if (u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged
+        || syntaxTree(u.startState) !== syntaxTree(u.state)
+        || u.transactions.some((tr) => tr.effects.some((e) => e.is(refresh)))) {
+        this.decorations = build(u.view, ctx);
+      }
+    }
+  }, {
+    decorations: (v) => v.decorations,
+    eventHandlers: {
+      // [[Ссылка]] вне строки с курсором — переход к узлу, как в Obsidian.
+      // Чтобы поправить саму ссылку, ставят курсор в её строку.
+      mousedown(e) {
+        const el = e.target.closest?.(".cm-md-wiki.is-link");
+        if (!el) return false;
+        e.preventDefault();
+        ctx.current.follow(el.dataset.wiki);
+        return true;
+      },
+    },
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Правки по кнопкам и клавишам                                         */
+/* ------------------------------------------------------------------ */
+
+function wrap(view, before, after = before) {
+  const { state } = view;
+  view.dispatch(state.changeByRange((r) => {
+    const outside = state.sliceDoc(r.from - before.length, r.from) === before
+      && state.sliceDoc(r.to, r.to + after.length) === after;
+    if (outside) {
+      return {
+        changes: [{ from: r.from - before.length, to: r.from }, { from: r.to, to: r.to + after.length }],
+        range: EditorSelection.range(r.from - before.length, r.to - before.length),
+      };
+    }
+    return {
+      changes: [{ from: r.from, insert: before }, { from: r.to, insert: after }],
+      range: EditorSelection.range(r.from + before.length, r.to + before.length),
+    };
+  }), { scrollIntoView: true, userEvent: "input.format" });
+  view.focus();
+  return true;
+}
+
+/** Заголовок, список, цитата — префикс каждой задетой строки; повтор снимает. */
+function prefixLines(view, prefix) {
+  const { state } = view;
+  const nums = new Set();
+  for (const r of state.selection.ranges) {
+    const last = state.doc.lineAt(r.to).number;
+    for (let n = state.doc.lineAt(r.from).number; n <= last; n += 1) nums.add(n);
+  }
+  const ls = [...nums].sort((a, b) => a - b).map((n) => state.doc.line(n));
+  const same = (text) => (prefix === "1. " ? /^\s*\d+[.)] /.test(text) && !/\[[ xX]\]/.test(text) : text.trimStart().startsWith(prefix));
+  const already = ls.every((l) => same(l.text));
+  let k = 0;
+  const changes = ls.map((l) => {
+    const m = MARKER.exec(l.text);
+    const len = m ? m[0].length : 0;
+    if (already) return { from: l.from, to: l.from + len, insert: "" };
+    k += 1;
+    return { from: l.from, to: l.from + len, insert: prefix === "1. " ? `${k}. ` : prefix };
+  });
+  applyKeepingCaret(view, changes);
+  return true;
+}
+
+/**
+ * Правка в начале строк с курсором, который едет вместе с текстом.
+ * Без этого вставка ровно в позицию курсора оставляет его перед вставленным
+ * («## » оказывалось после набранного заголовка).
+ */
+function applyKeepingCaret(view, spec) {
+  const { state } = view;
+  const changes = state.changes(spec);
+  view.dispatch({
+    changes,
+    selection: state.selection.map(changes, 1),
+    scrollIntoView: true,
+    userEvent: "input.format",
+  });
+  view.focus();
+}
+
+/** level: 1–6, или "cycle" — нет → H1 → H2 → H3 → нет (кнопка на телефоне). */
+function heading(view, level) {
+  const line = view.state.doc.lineAt(view.state.selection.main.head);
+  const m = /^\s{0,3}(#{1,6})\s+/.exec(line.text);
+  const cur = m ? m[1].length : 0;
+  const next = level === "cycle" ? (cur >= 3 ? 0 : cur + 1) : (cur === level ? 0 : level);
+  applyKeepingCaret(view, {
+    from: line.from, to: line.from + (m ? m[0].length : 0), insert: next ? `${"#".repeat(next)} ` : "",
+  });
+  return true;
+}
+
+/** Линейка, таблица, блок кода: с пустой строкой сверху и снизу. */
+function insertBlock(view, chunk, caretBack = 0) {
+  const { state } = view;
+  const line = state.doc.lineAt(state.selection.main.head);
+  const before = line.text.trim() ? "\n\n" : "";
+  const nextLine = line.number < state.doc.lines ? state.doc.line(line.number + 1) : null;
+  const after = nextLine && nextLine.text.trim() ? "\n\n" : "";
+  const insert = before + chunk + after;
+  const at = line.to + before.length + chunk.length - caretBack;
+  view.dispatch({ changes: { from: line.to, insert }, selection: { anchor: at }, scrollIntoView: true });
+  view.focus();
+  return true;
+}
+
+function insertText(view, text, caretBack = 0) {
+  const { from, to } = view.state.selection.main;
+  view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length - caretBack } });
+  view.focus();
+  return true;
+}
+
+/** [[ — подсказка из названий узлов проекта. */
+function wikiCompletion(ctx) {
+  return (context) => {
+    const m = context.matchBefore(/\[\[[^\]\n]*$/);
+    if (!m) return null;
+    const q = m.text.slice(2).trim().toLowerCase();
+    const titles = ctx.current.titles;
+    const picked = (q ? titles.filter((t) => t.toLowerCase().includes(q)) : titles)
+      .sort((a, b) => Number(!a.toLowerCase().startsWith(q)) - Number(!b.toLowerCase().startsWith(q)))
+      .slice(0, 40);
+    if (!picked.length) return null;
+    return {
+      from: m.from + 2,
+      filter: false,
+      options: picked.map((title) => ({
+        label: title,
+        type: "text",
+        apply: (view, _c, from, to) => {
+          const close = view.state.sliceDoc(to, to + 2) === "]]" ? "" : "]]";
+          view.dispatch({
+            changes: { from, to, insert: title + close },
+            selection: { anchor: from + title.length + 2 },
+          });
+        },
+      })),
+    };
+  };
+}
+
+const formatKeymap = [
+  { key: "Mod-b", run: (v) => wrap(v, "**") },
+  { key: "Mod-i", run: (v) => wrap(v, "*") },
+  { key: "Mod-e", run: (v) => wrap(v, "`") },
+  { key: "Mod-u", run: (v) => wrap(v, "~~") },
+  { key: "Mod-Shift-k", run: (v) => wrap(v, "[[", "]]") },
+  { key: "Mod-Shift-l", run: (v) => prefixLines(v, "- ") },
+  { key: "Mod-Shift-t", run: (v) => prefixLines(v, "- [ ] ") },
+  { key: "Mod-Shift-q", run: (v) => prefixLines(v, "> ") },
+  ...[1, 2, 3, 4, 5, 6].map((n) => ({ key: `Mod-${n}`, run: (v) => heading(v, n) })),
+  // Esc — выйти из правки, не закрывая панель: это решение принимает человек.
+  { key: "Escape", run: (v) => { v.contentDOM.blur(); return true; } },
+];
+
+/* ------------------------------------------------------------------ */
+/* Компонент                                                           */
+/* ------------------------------------------------------------------ */
+
+const SOURCE_KEY = "bluegem:mdSource";
+const preview = new Compartment();
 
 const MarkdownEditor = forwardRef(function MarkdownEditor(
   {
@@ -309,488 +422,197 @@ const MarkdownEditor = forwardRef(function MarkdownEditor(
     className = "",
     listClassName = "",
     toolbar = true,
-    // В узкой панели кнопки уезжают вбок одной строкой, а не занимают три:
-    // место там дороже, и это тот же приём, что у подсказок тегов.
     toolbarScroll = false,
+    large = false,
   },
   ref
 ) {
   const tr = useT();
-  const [blocks, setBlocks] = useState(() => splitBlocks(value || ""));
-  const [active, setActive] = useState(-1);
-  // Режим разметки запоминается на всё приложение: это привычка человека,
-  // а не свойство конкретного узла.
-  const [source, setSource] = useState(() => {
-    try {
-      return localStorage.getItem(SOURCE_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
-  const taRef = useRef(null);
+  const mobile = useIsMobile();
+  const hostRef = useRef(null);
   const rootRef = useRef(null);
-  const emitted = useRef(value);
-  const pendingCaret = useRef(null);
-  const pendingCmd = useRef(null);
-  const blocksRef = useRef(blocks);
-  blocksRef.current = blocks;
+  const viewRef = useRef(null);
+  const emitted = useRef(value || "");
+  const [focused, setFocused] = useState(false);
+  const [source, setSource] = useState(() => {
+    try { return localStorage.getItem(SOURCE_KEY) === "1"; } catch { return false; }
+  });
 
-  // Текст пришёл извне (открыли другой узел, откатили правку) — принимаем.
-  // Свои же изменения сюда не попадают: их строку мы помним в emitted.
+  // Всё, что меняется без пересоздания редактора: узлы, обработчики.
+  const ctx = useRef({ byTitle: new Map(), titles: [], follow: () => {} });
+  const handlers = useRef({ onChange, onPaste });
+  handlers.current = { onChange, onPaste };
+  const byTitle = useMemo(() => {
+    const map = new Map();
+    for (const n of nodes) if (n.title) map.set(n.title.trim().toLowerCase(), n.id);
+    return map;
+  }, [nodes]);
+  ctx.current.byTitle = byTitle;
+  ctx.current.titles = useMemo(() => nodes.map((n) => n.title).filter(Boolean), [nodes]);
+  ctx.current.follow = (title) => {
+    const id = byTitle.get(String(title || "").trim().toLowerCase());
+    if (id) onOpenNode?.(id);
+    else if (title) onCreateNode?.(title);
+  };
+
+  // Редактор — один на всё время жизни компонента.
   useEffect(() => {
-    if (value === emitted.current) return;
-    emitted.current = value;
-    setBlocks(splitBlocks(value || ""));
-    setActive(-1);
+    const view = new EditorView({
+      parent: hostRef.current,
+      state: EditorState.create({
+        doc: value || "",
+        extensions: [
+          history(),
+          EditorView.lineWrapping,
+          new LanguageSupport(markdownLanguage),
+          Prec.high(keymap.of([...formatKeymap, ...markdownKeymap])),
+          keymap.of([...completionKeymap, ...defaultKeymap, ...historyKeymap]),
+          autocompletion({ override: [wikiCompletion(ctx)], icons: false, activateOnTyping: true }),
+          // Подсказки — в корне страницы: внутри шторки у предков есть
+          // transform, и position: fixed отсчитывался бы не от экрана.
+          tooltips({ parent: document.body, position: "fixed" }),
+          preview.of(source ? [] : livePreview(ctx)),
+          cmPlaceholder(placeholder || tr("md.placeholder")),
+          EditorView.contentAttributes.of({
+            spellcheck: "true", autocorrect: "on", autocapitalize: "sentences", "data-testid": "md-input",
+          }),
+          // Телефон: курсор не должен прятаться под панелью кнопок над
+          // клавиатурой. Запас снизу у самого поля (см. markdown-editor.css)
+          // той же высоты — иначе нижние строки короткого поля считались бы
+          // «за краем», и подсказка [[узлов]] у них не показывалась.
+          EditorView.scrollMargins.of((v) => (
+            v.hasFocus && document.documentElement.classList.contains("sw-is-mobile") ? { bottom: 64 } : null
+          )),
+          EditorView.updateListener.of((u) => {
+            if (u.focusChanged) setFocused(u.view.hasFocus);
+            if (!u.docChanged) return;
+            if (u.transactions.some((t) => t.annotation(external))) return;
+            const text = u.state.doc.toString();
+            emitted.current = text;
+            handlers.current.onChange?.(text);
+          }),
+          EditorView.domEventHandlers({
+            paste: (e) => { handlers.current.onPaste?.(e); return e.defaultPrevented; },
+          }),
+        ],
+      }),
+    });
+    viewRef.current = view;
+    return () => { view.destroy(); viewRef.current = null; };
+    // eslint-disable-next-line
+  }, []);
+
+  // Текст пришёл извне (другой узел, откат правки) — заменяем целиком.
+  useEffect(() => {
+    const view = viewRef.current;
+    const next = value || "";
+    if (!view || next === emitted.current) return;
+    emitted.current = next;
+    const head = Math.min(view.state.selection.main.head, next.length);
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: next },
+      selection: { anchor: head },
+      annotations: [external.of(true), Transaction.addToHistory.of(false)],
+    });
   }, [value]);
 
-  const emit = useCallback((next) => {
-    emitted.current = next;
-    onChange(next);
-  }, [onChange]);
-
-  /** Заменить разметку одного блока, не трогая остальные. */
-  const setBlock = useCallback((index, text) => {
-    const next = blocksRef.current.slice();
-    next[index] = text;
-    setBlocks(next);
-    emit(joinBlocks(next));
-  }, [emit]);
-
-  const activate = useCallback((index, caret) => {
-    pendingCaret.current = caret;
-    setActive(index);
-  }, []);
-
-  /**
-   * Ушли из блока. Через сравнение с текущим, а не просто в «никто не правится»:
-   * щелчок по соседнему блоку сначала назначает правимым его, и только потом
-   * прежнее поле теряет фокус — без сверки оно погасило бы уже чужой выбор.
-   */
-  const deactivate = useCallback((index) => {
-    setActive((cur) => (cur === index ? -1 : cur));
-  }, []);
-
-  // Поле ввода появилось — ставим в него курсор туда, куда ткнули.
-  useLayoutEffect(() => {
-    if (active < 0) return;
-    const el = taRef.current;
-    if (!el) return;
-    el.focus({ preventScroll: true });
-    const at = pendingCaret.current;
-    pendingCaret.current = null;
-    const pos = at === null || at === undefined ? el.value.length : Math.min(at, el.value.length);
-    el.setSelectionRange(pos, pos);
-    const cmd = pendingCmd.current;
-    pendingCmd.current = null;
-    cmd?.();
-  }, [active]);
-
-  // Высота поля — по тексту: блок в документе не прокручивается внутри себя,
-  // он просто занимает столько строк, сколько в нём есть.
-  useLayoutEffect(() => {
-    const el = taRef.current;
-    if (!el || active < 0 || source) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [active, source, blocks]);
-
-  // Вышли из правки — документ пересобираем: границы блоков могли сдвинуться.
-  // Сравнение по содержимому обязательно: без него обновление зациклится.
-  useEffect(() => {
-    if (active >= 0 || source) return;
-    setBlocks((bs) => {
-      const fresh = splitBlocks(joinBlocks(bs));
-      const same = fresh.length === bs.length && fresh.every((b, i) => b === bs[i]);
-      return same ? bs : fresh;
-    });
-  }, [active, source]);
-
-  const openEditor = useCallback((cmd) => {
-    pendingCmd.current = cmd || null;
-    if (source) {
-      setSource(false);
-      try { localStorage.setItem(SOURCE_KEY, "0"); } catch { /* приватный режим */ }
-    }
-    setActive((cur) => (cur >= 0 ? cur : Math.max(0, blocksRef.current.length - 1)));
-  }, [source]);
+  // Названия узлов сменились — перекрасить [[ссылки]] (есть такой узел или нет).
+  useEffect(() => { viewRef.current?.dispatch({ effects: refresh.of(null) }); }, [byTitle]);
 
   useImperativeHandle(ref, () => ({
     focus: () => {
-      if (taRef.current) taRef.current.focus({ preventScroll: true });
-      else openEditor();
+      const view = viewRef.current;
+      if (!view) return;
+      view.focus();
+      view.dispatch({ selection: { anchor: view.state.doc.length }, scrollIntoView: true });
     },
     element: () => rootRef.current,
-  }), [openEditor]);
-
-  /* ---------------- правки текста ---------------- */
-
-  const apply = (next, from, to) => {
-    const el = taRef.current;
-    if (source) {
-      setBlocks([next]);
-      emit(next);
-    } else {
-      setBlock(active, next);
-    }
-    if (!el) return;
-    // Значение ставим сразу, не дожидаясь перерисовки: иначе выделение легло бы
-    // на прежний текст и уехало бы на длину вставки.
-    el.value = next;
-    el.focus({ preventScroll: true });
-    if (from != null) el.setSelectionRange(from, to ?? from);
-  };
-
-  const wrap = (before, after = before) => {
-    const el = taRef.current;
-    if (!el) return;
-    const { selectionStart: s, selectionEnd: e, value: v } = el;
-    // Повторное нажатие на выделенном снимает разметку, а не удваивает её.
-    const inside = v.slice(s, e);
-    if (v.slice(s - before.length, s) === before && v.slice(e, e + after.length) === after) {
-      const next = v.slice(0, s - before.length) + inside + v.slice(e + after.length);
-      apply(next, s - before.length, e - before.length);
-      return;
-    }
-    const next = v.slice(0, s) + before + inside + after + v.slice(e);
-    apply(next, s + before.length, e + before.length);
-  };
-
-  // Заголовок, список, цитата — префикс каждой задетой строки, а не обёртка
-  // выделения: на нескольких строках обёртка легла бы в середину текста.
-  const prefixLines = (prefix, strip = MARKER) => {
-    const el = taRef.current;
-    if (!el) return;
-    const { selectionStart: s, selectionEnd: e, value: v } = el;
-    const from = v.lastIndexOf("\n", s - 1) + 1;
-    const toRaw = v.indexOf("\n", e);
-    const to = toRaw === -1 ? v.length : toRaw;
-    const lines = v.slice(from, to).split("\n");
-    const already = lines.every((l) => l.startsWith(prefix));
-    let n = 0;
-    const patched = lines
-      .map((l) => {
-        const bare = strip ? l.replace(strip, "") : l;
-        if (already) return bare;
-        n += 1;
-        return (prefix === "1. " ? `${n}. ` : prefix) + bare;
-      })
-      .join("\n");
-    const next = v.slice(0, from) + patched + v.slice(to);
-    apply(next, from + patched.length);
-  };
-
-  const heading = (level) => {
-    const el = taRef.current;
-    if (!el) return;
-    const { selectionStart: s, value: v } = el;
-    const from = v.lastIndexOf("\n", s - 1) + 1;
-    const toRaw = v.indexOf("\n", s);
-    const to = toRaw === -1 ? v.length : toRaw;
-    const l = v.slice(from, to);
-    const bare = l.replace(/^\s{0,3}#{1,6}\s+/, "");
-    const same = new RegExp(`^\\s{0,3}#{${level}}\\s`).test(l);
-    const patched = same ? bare : `${"#".repeat(level)} ${bare}`;
-    const next = v.slice(0, from) + patched + v.slice(to);
-    apply(next, from + patched.length);
-  };
-
-  const insertText = (chunk, caretBack = 0) => {
-    const el = taRef.current;
-    if (!el) return;
-    const { selectionStart: s, selectionEnd: e, value: v } = el;
-    const next = v.slice(0, s) + chunk + v.slice(e);
-    apply(next, s + chunk.length - caretBack);
-  };
-
-  /**
-   * Линейка, таблица, блок кода: им нужна пустая строка сверху и снизу, иначе
-   * markdown приклеит их к соседнему абзацу. Вставляем с конца текущей строки,
-   * а не прямо под курсором, — разрывать фразу пополам никто не просил.
-   */
-  const insertBlock = (chunk, caretBack = 0) => {
-    const el = taRef.current;
-    if (!el) return;
-    const { selectionStart: s, value: v } = el;
-    const eol = v.indexOf("\n", s) === -1 ? v.length : v.indexOf("\n", s);
-    const head = v.slice(0, eol);
-    const tail = v.slice(eol);
-    const before = head.trim() ? "\n\n" : "";
-    const next = head + before + chunk + (tail.trim() ? "\n\n" : "") + tail.replace(/^\n+/, "");
-    const at = head.length + before.length + chunk.length - caretBack;
-    apply(next, at);
-  };
-
-  /** Сдвиг выделенных строк списка вправо или влево — Tab и Shift+Tab. */
-  const shiftLines = (out) => {
-    const el = taRef.current;
-    if (!el) return;
-    const { selectionStart: s, selectionEnd: e, value: v } = el;
-    const from = v.lastIndexOf("\n", s - 1) + 1;
-    const toRaw = v.indexOf("\n", e);
-    const to = toRaw === -1 ? v.length : toRaw;
-    const patched = v.slice(from, to).split("\n")
-      .map((l) => (out ? l.replace(/^ {1,2}/, "") : `  ${l}`))
-      .join("\n");
-    const next = v.slice(0, from) + patched + v.slice(to);
-    apply(next, from, from + patched.length);
-  };
-
-  /* ---------------- клавиатура ---------------- */
-
-  const onKeyDown = (e) => {
-    const el = e.currentTarget;
-    const { selectionStart: s, selectionEnd: sEnd, value: v } = el;
-    const mod = e.ctrlKey || e.metaKey;
-    const k = hotkey(e);
-
-    if (mod && !e.altKey) {
-      const map = {
-        b: () => wrap("**"),
-        i: () => wrap("*"),
-        e: () => wrap("`"),
-        u: () => wrap("~~"),
-      };
-      if (e.shiftKey) {
-        if (k === "k") { e.preventDefault(); wrap("[[", "]]"); return; }
-        if (k === "l") { e.preventDefault(); prefixLines("- "); return; }
-        if (k === "t") { e.preventDefault(); prefixLines("- [ ] "); return; }
-        if (k === "q") { e.preventDefault(); prefixLines("> "); return; }
-      } else if (/^[1-6]$/.test(k)) {
-        e.preventDefault();
-        heading(Number(k));
-        return;
-      } else if (map[k]) {
-        e.preventDefault();
-        map[k]();
-        return;
-      }
-      return; // Ctrl+S и прочее — не наше дело
-    }
-
-    // Tab в блокноте — это отступ пункта, а не прыжок на следующее поле.
-    // Уйти с поля клавиатурой всё равно можно: Escape, потом Tab.
-    if (e.key === "Tab") {
-      e.preventDefault();
-      shiftLines(e.shiftKey);
-      return;
-    }
-
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      el.blur();
-      // Не только blur: закрывать правку по одной лишь потере фокуса — значит
-      // зависеть от того, что фокус вообще куда-то ушёл. Escape обязан
-      // возвращать документ сам.
-      if (!source) deactivate(active);
-      return;
-    }
-
-    // Стрелками ходим по документу, а не только внутри блока: на границе
-    // соседний блок открывается сам. Иначе клавиатурой из абзаца не выйти.
-    if (!source && (e.key === "ArrowUp" || e.key === "ArrowDown") && s === sEnd) {
-      const up = e.key === "ArrowUp";
-      const edge = up ? v.lastIndexOf("\n", s - 1) === -1 : v.indexOf("\n", s) === -1;
-      const next = active + (up ? -1 : 1);
-      if (edge && next >= 0 && next < blocksRef.current.length) {
-        e.preventDefault();
-        activate(next, up ? undefined : 0);
-        return;
-      }
-    }
-
-    // Enter — обычный перенос строки. Отдельно только списки: продолжать
-    // нумерацию и галочки руками никто не станет.
-    if (e.key === "Enter" && !e.shiftKey && !mod) {
-      if (FENCE.test(v.slice(v.lastIndexOf("\n", s - 1) + 1))) return;
-      const lineStart = v.lastIndexOf("\n", s - 1) + 1;
-      const l = v.slice(lineStart, s);
-      const m = l.match(MARKER);
-      if (!m) return;
-      e.preventDefault();
-      const marker = m[0];
-      if (l.length === marker.length) {
-        // Пустой пункт — список закончился, маркер убираем.
-        const next = `${v.slice(0, lineStart)}\n${v.slice(s)}`;
-        apply(next, lineStart + 1);
-        return;
-      }
-      const nextMarker = marker
-        .replace(/\[[xX]\]/, "[ ]")
-        .replace(/^(\s*)(\d+)\./, (_, sp, num) => `${sp}${Number(num) + 1}.`);
-      insertText(`\n${nextMarker}`);
-    }
-  };
-
-  /* ---------------- панель разметки ---------------- */
-
-  const run = (fn) => {
-    if (!source && active >= 0 && taRef.current) { fn(); return; }
-    openEditor(fn);
-  };
-
-  const tools = [
-    [
-      { label: "H1", title: `${tr("md.h1")} · Ctrl+1`, run: () => heading(1) },
-      { label: "H2", title: `${tr("md.h2")} · Ctrl+2`, run: () => heading(2) },
-      { label: "H3", title: `${tr("md.h3")} · Ctrl+3`, run: () => heading(3) },
-    ],
-    [
-      { label: "B", title: `${tr("md.bold")} · Ctrl+B`, cls: "font-bold", run: () => wrap("**") },
-      { label: "I", title: `${tr("md.italic")} · Ctrl+I`, cls: "italic", run: () => wrap("*") },
-      { label: "S", title: `${tr("md.strike")} · Ctrl+U`, cls: "line-through", run: () => wrap("~~") },
-      { label: "</>", title: `${tr("md.code")} · Ctrl+E`, run: () => wrap("`") },
-    ],
-    [
-      { label: "•", title: `${tr("md.bullet")} · Ctrl+Shift+L`, run: () => prefixLines("- ") },
-      { label: "1.", title: tr("md.numbered"), run: () => prefixLines("1. ") },
-      { label: "☑", title: `${tr("md.task")} · Ctrl+Shift+T`, run: () => prefixLines("- [ ] ") },
-      { label: "“", title: `${tr("md.quote")} · Ctrl+Shift+Q`, run: () => prefixLines("> ") },
-    ],
-    [
-      { label: "[[ ]]", title: `${tr("md.nodeLink")} · Ctrl+Shift+K`, run: () => wrap("[[", "]]") },
-      { label: "🔗", title: tr("md.link"), run: () => insertText("[](https://)", 1) },
-      { label: "[^]", title: tr("md.footnote"), run: () => insertText("[^1]") },
-      { label: "{ }", title: tr("md.codeBlock"), run: () => insertBlock("```\n\n```", 4) },
-      { label: "▦", title: tr("md.table"), run: () => insertBlock(`| ${tr("md.col")} | ${tr("md.col")} |\n| --- | --- |\n|  |  |`) },
-      { label: "—", title: tr("md.hr"), run: () => insertBlock("---") },
-    ],
-  ];
+  }), []);
 
   const toggleSource = () => {
     const next = !source;
-    // Из разметки — собираем документ заново; в разметку — склеиваем как есть.
-    setBlocks((bs) => (next ? [joinBlocks(bs)] : splitBlocks(joinBlocks(bs))));
-    setActive(-1);
     setSource(next);
     try { localStorage.setItem(SOURCE_KEY, next ? "1" : "0"); } catch { /* приватный режим */ }
+    viewRef.current?.dispatch({ effects: preview.reconfigure(next ? [] : livePreview(ctx)) });
   };
 
-  // Одним объектом и по памяти: он лежит в свойствах каждого собранного блока,
-  // и новый на каждый набранный знак пересобирал бы весь документ.
-  const view = useMemo(() => {
-    const byTitle = {};
-    for (const n of nodes) if (n.title) byTitle[n.title.trim().toLowerCase()] = n.id;
-    return {
-      doc: true,
-      nodesByTitle: byTitle,
-      onOpenNode,
-      onCreateNode,
-      createTitle: (title) => tr("markdown.createNode", { title }),
-      missingTitle: tr("markdown.missingNode"),
-    };
-  }, [nodes, onOpenNode, onCreateNode, tr]);
+  const act = (fn) => () => { const v = viewRef.current; if (v) { haptic("tick"); fn(v); } };
+  const tools = [
+    { id: "h", icon: Heading, title: tr("md.h1"), run: (v) => heading(v, mobile ? "cycle" : 1) },
+    { id: "b", icon: Bold, title: `${tr("md.bold")} · Ctrl+B`, run: (v) => wrap(v, "**") },
+    { id: "i", icon: Italic, title: `${tr("md.italic")} · Ctrl+I`, run: (v) => wrap(v, "*") },
+    { id: "s", icon: Strikethrough, title: `${tr("md.strike")} · Ctrl+U`, run: (v) => wrap(v, "~~") },
+    { id: "ul", icon: List, title: `${tr("md.bullet")} · Ctrl+Shift+L`, run: (v) => prefixLines(v, "- ") },
+    { id: "ol", icon: ListOrdered, title: tr("md.numbered"), run: (v) => prefixLines(v, "1. ") },
+    { id: "task", icon: CheckSquare, title: `${tr("md.task")} · Ctrl+Shift+T`, run: (v) => prefixLines(v, "- [ ] ") },
+    { id: "q", icon: Quote, title: `${tr("md.quote")} · Ctrl+Shift+Q`, run: (v) => prefixLines(v, "> ") },
+    { id: "wiki", label: "[[ ]]", title: `${tr("md.nodeLink")} · Ctrl+Shift+K`, run: (v) => wrap(v, "[[", "]]") },
+    { id: "code", icon: Code2, title: `${tr("md.code")} · Ctrl+E`, run: (v) => wrap(v, "`") },
+    { id: "link", icon: Link2, title: tr("md.link"), run: (v) => insertText(v, "[](https://)", 1), desktop: true },
+    { id: "table", icon: Table2, title: tr("md.table"), run: (v) => insertBlock(v, `| ${tr("md.col")} | ${tr("md.col")} |\n| --- | --- |\n|  |  |`), desktop: true },
+    { id: "hr", icon: Minus, title: tr("md.hr"), run: (v) => insertBlock(v, "---"), desktop: true },
+  ];
+  // Кнопка не должна забирать фокус у текста: иначе выделение уже потеряно,
+  // а на телефоне ещё и прячется клавиатура.
+  const keep = (e) => e.preventDefault();
 
   const SourceIcon = source ? FileText : Code2;
-  const text = joinBlocks(blocks);
 
   return (
-    <div ref={rootRef} className={className} data-testid="markdown-editor">
-      {toolbar && (
+    <div ref={rootRef} className={`sw-lmd ${large ? "is-large" : ""} ${className}`} data-testid="markdown-editor">
+      {toolbar && !mobile && (
         <div
-          className={`flex items-center gap-1 shrink-0 ${
-            toolbarScroll ? "flex-nowrap overflow-x-auto sw-no-scrollbar" : "flex-wrap"
-          }`}
+          className={`sw-lmd-tools ${toolbarScroll ? "is-scroll" : ""}`}
+          onMouseDown={keep}
         >
-          {tools.map((group, gi) => (
-            <div key={gi} className="flex items-center gap-1 shrink-0">
-              {gi > 0 && <span className="w-px h-4 mx-0.5" style={{ background: "var(--sw-border)" }} />}
-              {group.map((b) => (
-                <button
-                  key={b.label}
-                  type="button"
-                  title={b.title}
-                  // Кнопка не должна забирать фокус: иначе к моменту нажатия
-                  // выделение в тексте уже потеряно и оборачивать нечего.
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => run(b.run)}
-                  className={`min-w-[1.9rem] px-1.5 py-1 rounded border sw-border-c text-[11px] sw-text-dim sw-btn font-mono-sw ${b.cls || ""}`}
-                >
-                  {b.label}
-                </button>
-              ))}
-            </div>
+          {tools.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              title={b.title}
+              data-testid={`md-tool-${b.id}`}
+              onClick={act(b.run)}
+              className="sw-lmd-tool"
+            >
+              {b.icon ? <b.icon className="w-3.5 h-3.5" /> : b.label}
+            </button>
           ))}
           <button
             type="button"
             data-testid="md-source-toggle"
             title={tr(source ? "md.document" : "md.source")}
-            onMouseDown={(e) => e.preventDefault()}
             onClick={toggleSource}
-            className="ml-auto shrink-0 flex items-center gap-1 px-1.5 py-1 rounded border sw-border-c text-[11px] sw-text-dim sw-btn"
-            style={source ? { color: "var(--sw-accent)", borderColor: "var(--sw-accent)" } : undefined}
+            className={`sw-lmd-tool ml-auto ${source ? "is-on" : ""}`}
           >
-            <SourceIcon className="w-3 h-3" />
+            <SourceIcon className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
-      <div className={`sw-mde ${listClassName}`}>
-        {source ? (
-          /* Подсветка и поле ввода — один слой на другом. Высоту задаёт
-             подсветка, поле растянуто по всему блоку: щелчок ниже последней
-             строки ставит курсор в конец, и никакой подгонки высоты не нужно. */
-          <div className="sw-mde-stack">
-            <Highlight text={text} />
-            <textarea
-              ref={taRef}
-              data-testid="md-input"
-              className="sw-mde-input sw-mde-type"
-              value={text}
-              placeholder={placeholder || tr("md.placeholder")}
-              onChange={(e) => { setBlocks([e.target.value]); emit(e.target.value); }}
-              onKeyDown={onKeyDown}
-              onPaste={onPaste}
-              spellCheck
-            />
+      <div ref={hostRef} className={`sw-lmd-host ${listClassName}`} />
+
+      {/* Телефон: кнопки оформления — над клавиатурой, пока пишут. Справа
+          «Готово» прячет клавиатуру и показывает текст собранным. */}
+      {mobile && focused && createPortal(
+        <div className="sw-lmd-kbar" data-testid="md-keyboard-bar" onPointerDown={keep} onMouseDown={keep}>
+          <div className="sw-lmd-kbar-scroll">
+            {tools.filter((b) => !b.desktop).map((b) => (
+              <button key={b.id} type="button" onClick={act(b.run)} aria-label={b.title} className="sw-lmd-kbtn">
+                {b.icon ? <b.icon className="w-[19px] h-[19px]" /> : <span className="text-[13px] font-semibold">{b.label}</span>}
+              </button>
+            ))}
           </div>
-        ) : (
-          <div
-            className="sw-mde-doc"
-            data-testid="md-doc"
-            // Щелчок ниже последнего блока ставит курсор в конец документа —
-            // как в блокноте, где под текстом всегда есть куда ткнуть.
-            onMouseUp={(e) => {
-              if (e.target !== e.currentTarget) return;
-              const sel = window.getSelection();
-              if (sel && !sel.isCollapsed) return;
-              activate(blocksRef.current.length - 1, undefined);
-            }}
+          <button
+            type="button"
+            className="sw-lmd-kdone"
+            data-testid="md-done"
+            onClick={() => viewRef.current?.contentDOM.blur()}
           >
-            {blocks.length === 1 && !blocks[0].trim() && active < 0 ? (
-              <p
-                className="sw-mde-placeholder"
-                onMouseDown={(e) => { e.preventDefault(); activate(0, 0); }}
-              >
-                {placeholder || tr("md.placeholder")}
-              </p>
-            ) : blocks.map((src, i) => (i === active ? (
-              <textarea
-                key={`edit-${i}`}
-                ref={taRef}
-                data-testid="md-input"
-                className={`sw-mde-edit sw-md-doc ${blockClass(src)}`}
-                value={src}
-                rows={1}
-                onChange={(e) => setBlock(i, e.target.value)}
-                onKeyDown={onKeyDown}
-                onPaste={onPaste}
-                onBlur={() => deactivate(i)}
-                spellCheck
-              />
-            ) : (
-              <Block
-                key={i}
-                index={i}
-                source={src}
-                onActivate={activate}
-                view={view}
-              />
-            )))}
-          </div>
-        )}
-      </div>
+            <Check className="w-[18px] h-[18px]" />
+          </button>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 });

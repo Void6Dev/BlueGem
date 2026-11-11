@@ -1,6 +1,6 @@
 import "@/App.css";
-import { Component, lazy, Suspense, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Link, useNavigate } from "react-router-dom";
+import { Component, lazy, Suspense, useEffect, useRef } from "react";
+import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Toaster } from "sonner";
 // Две страницы — два куска сборки. Список проектов и редактор не нужны
@@ -11,6 +11,9 @@ const Editor = lazy(() => import("@/pages/Editor"));
 import { isDesktop, onLanguage, onMenuCommand, onOpenProject, takePendingProject } from "@/lib/desktop";
 import { openProjectText } from "@/lib/openProject";
 import { setLanguage, t, useT } from "@/lib/i18n";
+import {
+  initNative, isNative, readSharedFile, setBackFallback, useIsMobile,
+} from "@/lib/platform";
 
 /** A render crash shouldn't leave the author staring at a blank page. */
 class ErrorBoundary extends Component {
@@ -90,6 +93,59 @@ function DesktopBridge() {
   return null;
 }
 
+/**
+ * Android: системная «назад» и файлы проектов, открытые из других приложений.
+ *
+ * Шторки и меню сами перехватывают «назад», пока открыты (lib/platform.js).
+ * Когда закрывать уже нечего, кнопка ведёт по страницам: из редактора — к
+ * списку проектов, со списка — сворачивает приложение, как любое другое.
+ *
+ * Файл .bgproj, открытый из «Файлов» или мессенджера, приходит ссылкой
+ * content:// — читаем его и открываем так же, как импорт с панели проектов.
+ */
+function NativeBridge() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const pathRef = useRef(location.pathname);
+  pathRef.current = location.pathname;
+
+  useEffect(() => setBackFallback(() => {
+    if (pathRef.current === "/") return false;
+    navigate("/");
+    return true;
+  }), [navigate]);
+
+  useEffect(() => {
+    if (!isNative) return undefined;
+    initNative();
+    let alive = true;
+    let remove = null;
+    const accept = async (url) => {
+      if (!url || !/^(content|file):/i.test(url)) return;
+      try {
+        const text = await readSharedFile(url);
+        const result = await openProjectText(text);
+        if (!result || !alive) return;
+        toast.success(t(result.action === "imported"
+          ? "dashboard.toasts.imported"
+          : "dashboard.toasts.opened", { name: result.name }));
+        navigate(`/project/${result.id}`);
+      } catch (e) {
+        toast.error(e?.message || t("errors.openFile"));
+      }
+    };
+    import("@capacitor/app").then(async ({ App: CapApp }) => {
+      const launch = await CapApp.getLaunchUrl().catch(() => null);
+      if (launch?.url) accept(launch.url);
+      const handle = await CapApp.addListener("appUrlOpen", (e) => accept(e.url));
+      if (alive) remove = handle; else handle.remove();
+    }).catch(() => {});
+    return () => { alive = false; remove?.remove(); };
+  }, [navigate]);
+
+  return null;
+}
+
 function NotFound() {
   const t = useT();
   return (
@@ -104,6 +160,12 @@ function NotFound() {
 }
 
 function App() {
+  // Телефон — отдельная раскладка: класс на <html> включает mobile.css.
+  const mobile = useIsMobile();
+  useEffect(() => {
+    document.documentElement.classList.toggle("sw-is-mobile", mobile);
+  }, [mobile]);
+
   // Соседняя страница подтягивается в простое: переход «список → редактор»
   // должен быть мгновенным, а не ждать загрузки куска.
   useEffect(() => {
@@ -119,6 +181,7 @@ function App() {
       <ErrorBoundary>
         <BrowserRouter>
           <DesktopBridge />
+          <NativeBridge />
           {/* Заглушка пустая: у обеих страниц свой скелетон, а вспышка
               «загрузка…» между ними была бы шумом на десятки миллисекунд. */}
           <Suspense fallback={null}>
@@ -131,7 +194,14 @@ function App() {
         </BrowserRouter>
       </ErrorBoundary>
       {/* Colours come from --sw-* vars (see App.css), so toasts follow the theme. */}
-      <Toaster position="bottom-right" richColors closeButton />
+      {/* На телефоне — сверху: снизу живут нижняя панель и шторки. */}
+      <Toaster
+        position={mobile ? "top-center" : "bottom-right"}
+        richColors
+        closeButton={!mobile}
+        mobileOffset={{ top: "calc(var(--sw-safe-top) + 64px)", left: 12, right: 12 }}
+        swipeDirections={mobile ? ["top", "left", "right"] : undefined}
+      />
     </div>
   );
 }

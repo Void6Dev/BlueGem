@@ -1,0 +1,1191 @@
+/* =====================================================================
+   Телефон.
+   Всё, что ниже, работает только там, где палец: класс .sw-is-mobile на
+   <html> ставит App по ширине экрана, .sw-native — оболочка Android.
+   Десктоп эти правила не трогают.
+   ===================================================================== */
+
+/* Отступы от вырезов и системных панелей. На Android 15 приложение рисуется
+   под ними (edge-to-edge): часть WebView отдаёт env(), часть — переменные,
+   которые подставляет Capacitor. Берём большее из двух. */
+:root {
+  --sw-safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --sw-safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+  --sw-safe-left: max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px));
+  --sw-safe-right: max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px));
+  --sw-mdock-h: 64px;
+  --sw-spring: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.sw-is-mobile,
+.sw-is-mobile body {
+  /* Ни «потянуть, чтобы обновить», ни резинки всей страницы. */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.sw-is-mobile body { -webkit-touch-callout: none; }
+.sw-is-mobile button,
+.sw-is-mobile a,
+.sw-is-mobile [role="button"] {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Подсказки клавиш на телефоне ни о чём не говорят. */
+.sw-is-mobile kbd { display: none !important; }
+/* Поля — 16px: меньше Android увеличивает страницу при фокусе. */
+.sw-is-mobile input,
+.sw-is-mobile textarea { font-size: max(16px, 1em); }
+
+/* Отклик на касание вместо наведения: короткое «нажатие» кнопки. */
+.sw-press { transition: transform 0.12s var(--sw-ease), background-color 0.12s var(--sw-ease), opacity 0.12s; }
+.sw-press:active { transform: scale(0.94); }
+
+/* ---------------- шторка ---------------- */
+
+.sw-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.52);
+  -webkit-tap-highlight-color: transparent;
+}
+.sw-light .sw-sheet-backdrop { background: rgba(20, 20, 30, 0.32); }
+
+.sw-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - var(--sw-safe-top) - 10px);
+  border: 1px solid var(--sw-border);
+  border-bottom: 0;
+  border-radius: 24px 24px 0 0;
+  background: var(--sw-surface);
+  box-shadow: 0 -10px 40px -12px rgba(0, 0, 0, 0.55), var(--sw-highlight);
+  padding-bottom: var(--sw-safe-bottom);
+  padding-left: var(--sw-safe-left);
+  padding-right: var(--sw-safe-right);
+  will-change: transform;
+  overscroll-behavior: contain;
+  outline: none;
+}
+.sw-sheet[data-detent="full"] { height: calc(100dvh - var(--sw-safe-top) - 10px); }
+.sw-sheet[data-detent="large"] { height: min(86dvh, calc(100dvh - var(--sw-safe-top) - 10px)); }
+/* Быстрый просмотр — карточка над холстом, а не стена до низа. */
+.sw-sheet.is-floating {
+  left: 8px;
+  right: 8px;
+  bottom: calc(8px + var(--sw-safe-bottom));
+  border-bottom: 1px solid var(--sw-border);
+  border-radius: 24px;
+  padding-bottom: 0;
+  max-height: min(62dvh, calc(100dvh - var(--sw-safe-top) - 120px));
+  box-shadow: var(--sw-elev-4);
+}
+@media (min-width: 640px) {
+  .sw-sheet, .sw-sheet.is-floating { left: 50%; right: auto; width: 600px; margin-left: -300px; }
+}
+.sw-sheet-grip {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  padding: 9px 0 5px;
+  touch-action: none;
+  cursor: grab;
+}
+.sw-sheet-grip span {
+  width: 38px;
+  height: 4.5px;
+  border-radius: 99px;
+  background: var(--sw-border-strong);
+}
+.sw-sheet-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 16px 12px 20px;
+}
+.sw-sheet-title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--sw-font-display);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sw-sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.sw-icon-btn {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--sw-text-dim);
+  transition: background-color 0.15s var(--sw-ease), color 0.15s, transform 0.12s var(--sw-ease);
+}
+.sw-icon-btn:active { background: var(--sw-hover); color: var(--sw-text); transform: scale(0.92); }
+.sw-icon-btn.is-filled { background: var(--sw-surface-2); color: var(--sw-text); }
+
+/* ---------------- меню снизу (ActionSheet) ---------------- */
+
+.sw-action-sheet { max-height: min(78dvh, calc(100dvh - var(--sw-safe-top) - 10px)); }
+.sw-as-head { flex: none; padding: 0 20px 6px; min-height: 8px; }
+.sw-as-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sw-text-dim);
+  padding: 2px 0 6px;
+}
+.sw-as-dot { width: 10px; height: 10px; border-radius: 99px; flex: none; }
+.sw-as-back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: -8px;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sw-text);
+  max-width: 100%;
+}
+.sw-as-back:active { background: var(--sw-hover); }
+.sw-as-list {
+  flex: 1;
+  min-height: 0;
+  padding: 2px 8px 12px;
+  animation: swAsIn 0.22s var(--sw-spring) both;
+}
+@keyframes swAsIn {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: none; }
+}
+.sw-as-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 14px;
+  border-radius: 14px;
+  font-size: 15.5px;
+  text-align: left;
+  color: var(--sw-text);
+  transition: background-color 0.12s var(--sw-ease);
+}
+.sw-as-item:active:not(:disabled) { background: var(--sw-hover); }
+.sw-as-item:disabled { opacity: 0.36; }
+.sw-as-item.is-danger { color: #F2626F; }
+.sw-as-icon {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sw-text-dim);
+}
+.sw-as-item.is-danger .sw-as-icon { color: inherit; }
+.sw-as-swatch { width: 14px; height: 14px; border-radius: 99px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15); }
+.sw-as-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-as-sep { height: 1px; margin: 6px 14px; background: var(--sw-border); }
+.sw-as-caption {
+  padding: 12px 14px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--sw-text-mute);
+}
+
+/* ---------------- редактор: верхняя полоса ---------------- */
+
+.sw-mtop {
+  position: relative;
+  z-index: 30;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: calc(var(--sw-safe-top) + 6px) calc(var(--sw-safe-right) + 6px) 6px calc(var(--sw-safe-left) + 4px);
+  background: color-mix(in srgb, var(--sw-bg) 92%, transparent);
+  border-bottom: 1px solid var(--sw-border);
+}
+.sw-mtop-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 2px 6px;
+  border-radius: 12px;
+  text-align: left;
+}
+.sw-mtop-title:active { background: var(--sw-hover); }
+.sw-mtop-name {
+  max-width: 100%;
+  font-family: var(--sw-font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sw-mtop-canvas {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--sw-text-dim);
+}
+.sw-mtop-canvas > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-mtop-canvas i {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--sw-accent);
+  flex: none;
+}
+
+/* ---------------- редактор: нижняя панель ---------------- */
+
+.sw-mdock {
+  position: absolute;
+  z-index: 25;
+  left: 50%;
+  bottom: calc(12px + var(--sw-safe-bottom));
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 26px;
+  transform: translate3d(-50%, 0, 0);
+  transition: transform 0.32s var(--sw-spring), opacity 0.2s var(--sw-ease);
+}
+.sw-mdock.is-hidden,
+.sw-keyboard .sw-mdock {
+  transform: translate3d(-50%, calc(100% + 24px + var(--sw-safe-bottom)), 0);
+  opacity: 0;
+  pointer-events: none;
+}
+.sw-mdock-btn {
+  position: relative;
+  width: 58px;
+  height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border-radius: 18px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--sw-text-dim);
+  transition: background-color 0.15s var(--sw-ease), color 0.15s, transform 0.12s var(--sw-ease);
+}
+.sw-mdock-btn:active:not(:disabled) { transform: scale(0.92); background: var(--sw-hover); }
+.sw-mdock-btn:disabled { opacity: 0.35; }
+.sw-mdock-btn[data-active="true"] { color: var(--sw-text); background: var(--sw-surface-2); }
+.sw-mdock-btn svg { width: 20px; height: 20px; }
+.sw-mdock-add {
+  width: 56px;
+  height: 56px;
+  margin: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20px;
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+  box-shadow: 0 8px 22px -8px color-mix(in srgb, var(--sw-accent) 75%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform 0.14s var(--sw-ease), box-shadow 0.2s;
+}
+.sw-mdock-add:active { transform: scale(0.9); }
+.sw-mdock-add svg { width: 26px; height: 26px; stroke-width: 2.4; }
+.sw-mdock-badge {
+  position: absolute;
+  top: 5px;
+  right: 11px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+  font-size: 9.5px;
+  line-height: 15px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* Плашки поверх холста (связывание, поиск, выделение) — над нижней панелью. */
+.sw-is-mobile .sw-mfloat {
+  bottom: calc(var(--sw-mdock-h) + 28px + var(--sw-safe-bottom)) !important;
+  max-width: calc(100vw - 24px);
+}
+.sw-is-mobile .sw-selbar { top: auto; bottom: calc(var(--sw-mdock-h) + 28px + var(--sw-safe-bottom)); }
+
+/* Холст под пальцем: точки связи крупнее, курсоров нет, выделения текста нет. */
+.sw-is-mobile .react-flow__node { -webkit-user-select: none; user-select: none; }
+.sw-is-mobile .react-flow__handle { width: 16px; height: 16px; }
+.sw-is-mobile .react-flow__handle::after {
+  content: "";
+  position: absolute;
+  inset: -12px;
+}
+
+/* ---------------- шторка «Создать» ---------------- */
+
+.sw-create-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 2px 16px 8px;
+}
+.sw-create-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 96px;
+  padding: 14px 6px 12px;
+  border-radius: 18px;
+  border: 1px solid var(--sw-border);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--node-color) 14%, var(--sw-surface-2)),
+    color-mix(in srgb, var(--node-color) 4%, var(--sw-surface-2)));
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.2;
+  transition: transform 0.12s var(--sw-ease), border-color 0.15s;
+}
+.sw-create-tile:active { transform: scale(0.95); border-color: var(--node-color); }
+.sw-create-tile-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--node-color);
+  color: #fff;
+  box-shadow: 0 6px 16px -6px var(--node-color);
+}
+.sw-create-tile-icon svg { width: 21px; height: 21px; }
+.sw-create-tile.is-dashed { border-style: dashed; background: transparent; color: var(--sw-text-dim); }
+.sw-create-tile.is-dashed .sw-create-tile-icon { background: var(--sw-surface-2); color: var(--sw-text-dim); box-shadow: none; }
+.sw-create-row {
+  display: flex;
+  gap: 8px;
+  padding: 6px 16px 14px;
+}
+.sw-create-row > button {
+  flex: 1;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 14px;
+  background: var(--sw-surface-2);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sw-text-dim);
+}
+.sw-create-row > button:active { transform: scale(0.97); }
+
+/* ---------------- списки в шторках (мир, холсты) ---------------- */
+
+.sw-msearch {
+  position: relative;
+  margin: 0 16px 10px;
+}
+.sw-msearch svg.sw-msearch-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: var(--sw-text-dim);
+  pointer-events: none;
+}
+.sw-msearch input {
+  width: 100%;
+  height: 46px;
+  padding: 0 44px 0 42px;
+  border-radius: 14px;
+  border: 1px solid var(--sw-border);
+  background: var(--sw-surface-0);
+  color: var(--sw-text);
+  outline: none;
+}
+.sw-msearch input:focus { border-color: var(--sw-accent); box-shadow: var(--sw-ring); }
+.sw-msearch-clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.sw-mlist { padding: 0 8px 16px; }
+.sw-mrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 54px;
+  padding: 0 12px;
+  border-radius: 14px;
+  text-align: left;
+  font-size: 15px;
+}
+.sw-mrow:active { background: var(--sw-hover); }
+.sw-mrow[data-active="true"] { background: var(--sw-surface-2); }
+.sw-mrow-meta { font-size: 12px; color: var(--sw-text-mute); font-family: var(--sw-font-mono); }
+.sw-mrow input {
+  flex: 1;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--sw-accent);
+  background: var(--sw-surface-0);
+  color: var(--sw-text);
+  outline: none;
+}
+
+/* Дерево мира в шторке: строки крупнее, под палец. */
+.sw-is-mobile .sw-world-sheet .sw-tree-row,
+.sw-is-mobile .sw-world-sheet [data-testid^="tree-node-"] { min-height: 44px; }
+
+/* ---------------- быстрый просмотр узла в шторке ---------------- */
+
+.sw-preview.is-docked {
+  position: static;
+  width: auto !important;
+  max-height: none !important;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  animation: none;
+}
+.sw-preview.is-docked .sw-preview-head { padding: 0 14px 12px 20px; }
+.sw-preview.is-docked .sw-preview-title { font-size: 22px; }
+.sw-preview.is-docked .sw-preview-body { flex: 1; min-height: 0; overflow-y: auto; padding-left: 20px; padding-right: 20px; }
+.sw-preview.is-docked .sw-preview-foot {
+  padding: 10px 12px calc(10px + var(--sw-safe-bottom) * 0);
+  gap: 6px;
+}
+.sw-preview.is-docked .sw-preview-edit,
+.sw-preview.is-docked .sw-preview-act {
+  height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  justify-content: center;
+}
+.sw-preview.is-docked .sw-preview-edit {
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+  font-weight: 600;
+}
+.sw-preview.is-docked .sw-preview-act { background: var(--sw-surface-2); }
+.sw-preview.is-docked .sw-preview-act svg,
+.sw-preview.is-docked .sw-preview-edit svg { width: 17px; height: 17px; }
+.sw-preview.is-docked .sw-node-link { min-height: 38px; }
+
+/* ---------------- панели, превращённые в шторки ---------------- */
+
+.sw-sheet .sw-dock-in-sheet {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: auto !important;
+  height: auto !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+/* ---------------- окно настроек на телефоне ---------------- */
+
+@media (max-width: 767px) {
+  .sw-settings-backdrop { padding: 0; align-items: stretch; }
+  .sw-settings-window {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    border: 0;
+    flex-direction: column;
+    padding-top: var(--sw-safe-top);
+    padding-bottom: var(--sw-safe-bottom);
+  }
+  .sw-settings-nav {
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--sw-border);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .sw-settings-nav::-webkit-scrollbar { display: none; }
+  .sw-settings-nav-title { display: none; }
+  .sw-settings-nav-item { height: 38px; flex: none; padding: 0 14px; border-radius: 999px; white-space: nowrap; }
+  .sw-settings-nav-item[data-active="true"] { box-shadow: none; background: var(--sw-surface-2); }
+  .sw-settings-head { padding: 14px 16px 12px; }
+  .sw-settings-body { padding: 18px 16px 28px; gap: 26px; }
+}
+
+/* ---------------- диалоги: снизу, во всю ширину ---------------- */
+
+@media (max-width: 640px) {
+  .sw-dialog {
+    --tw-translate-x: 0 !important;
+    --tw-translate-y: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: calc(100dvh - var(--sw-safe-top) - 10px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 24px 24px 0 0 !important;
+    border-bottom: 0 !important;
+    padding: 30px 18px calc(18px + var(--sw-safe-bottom)) !important;
+    animation: swSheetUp 0.34s var(--sw-spring) both !important;
+  }
+  .sw-dialog[data-state="closed"] { animation: swSheetDown 0.2s var(--sw-ease-out) both !important; }
+  .sw-dialog::before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    width: 38px;
+    height: 4.5px;
+    margin-left: -19px;
+    border-radius: 99px;
+    background: var(--sw-border-strong);
+  }
+  .sw-dialog-foot {
+    position: sticky;
+    bottom: calc(-18px - var(--sw-safe-bottom));
+    margin: 0 -18px calc(-18px - var(--sw-safe-bottom));
+    padding: 12px 18px calc(12px + var(--sw-safe-bottom)) !important;
+    background: var(--sw-surface);
+    border-top: 1px solid var(--sw-border);
+    z-index: 2;
+  }
+  /* Сводка «8 типов · 9 страниц» уже видна выше чипами — внизу только кнопки. */
+  .sw-dialog-foot > span { display: none; }
+  .sw-dialog-foot > div { flex: 1; }
+  .sw-dialog-foot button { height: 48px !important; border-radius: 14px !important; font-size: 15px !important; }
+  .sw-dialog-foot button:last-child { flex: 1; justify-content: center; }
+
+  /* Шаблоны — каруселью вбок: три высокие карточки друг под другом
+     уводили поле имени за край экрана. */
+  .sw-tpl-grid {
+    display: flex !important;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    gap: 10px !important;
+    margin: 0 -18px;
+    padding: 2px 18px 4px;
+    scrollbar-width: none;
+  }
+  .sw-tpl-grid::-webkit-scrollbar { display: none; }
+  .sw-tpl-grid > button { flex: 0 0 80%; scroll-snap-align: center; }
+}
+@keyframes swSheetUp {
+  from { transform: translate3d(0, 100%, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+@keyframes swSheetDown {
+  from { transform: translate3d(0, 0, 0); opacity: 1; }
+  to { transform: translate3d(0, 100%, 0); opacity: 0.6; }
+}
+
+/* ---------------- панель проектов ---------------- */
+
+.sw-fab {
+  position: fixed;
+  z-index: 30;
+  right: calc(18px + var(--sw-safe-right));
+  bottom: calc(18px + var(--sw-safe-bottom));
+  height: 58px;
+  padding: 0 22px 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 20px;
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 12px 30px -10px color-mix(in srgb, var(--sw-accent) 80%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform 0.14s var(--sw-ease);
+  /* backwards, а не both: заливка после входа держала бы transform: none
+     и глушила вжатие кнопки в :active. */
+  animation: swFabIn 0.45s var(--sw-spring) backwards 0.1s;
+}
+.sw-fab:active { transform: scale(0.94); }
+.sw-fab svg { width: 22px; height: 22px; stroke-width: 2.4; }
+@keyframes swFabIn {
+  from { transform: translateY(30px) scale(0.8); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.sw-is-mobile .sw-dash-header { padding-top: var(--sw-safe-top); }
+.sw-mcard-more {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+/* ---------------- палитра команд во весь экран ---------------- */
+
+@media (max-width: 767px) {
+  .sw-palette-host {
+    padding: 0 !important;
+    align-items: stretch !important;
+    background: var(--sw-bg) !important;
+    backdrop-filter: none !important;
+  }
+  .sw-palette-host > div {
+    max-width: none !important;
+    border-radius: 0 !important;
+    border: 0 !important;
+    display: flex;
+    flex-direction: column;
+    padding-top: var(--sw-safe-top);
+    padding-bottom: var(--sw-safe-bottom);
+    box-shadow: none !important;
+  }
+  .sw-palette-host .sw-palette-list { max-height: none !important; flex: 1; }
+  .sw-palette-host .sw-palette-list > button { min-height: 52px; }
+}
+
+/* ---------------- хронология ---------------- */
+
+.sw-is-mobile .tl-root { padding-bottom: calc(var(--sw-mdock-h) + 24px + var(--sw-safe-bottom)); }
+
+/* ---------------- уведомления ---------------- */
+
+.sw-is-mobile [data-sonner-toaster] { --width: calc(100vw - 24px); }
+
+/* Блокнот описания во весь экран — с отступами от системных панелей. */
+.sw-fullscreen {
+  padding-top: var(--sw-safe-top);
+  padding-bottom: var(--sw-safe-bottom);
+  padding-left: var(--sw-safe-left);
+  padding-right: var(--sw-safe-right);
+}
+
+/* ---------------- хронология на телефоне ---------------- */
+
+.sw-is-mobile .tl-head { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
+.sw-is-mobile .tl-head-title { display: none; }
+.sw-is-mobile .tl-search { order: 3; flex: 1 1 100%; max-width: none; min-width: 0; height: 42px; border-radius: 12px; }
+.sw-is-mobile .tl-search input { font-size: 16px; }
+.sw-is-mobile .tl-goto { flex: 1; min-width: 0; }
+.sw-is-mobile .tl-head-tools { margin-left: 0; }
+.sw-is-mobile .tl-tool { min-width: 38px; height: 38px; border-radius: 10px; }
+.sw-is-mobile .tl-select { height: 38px; border-radius: 10px; font-size: 13px; }
+.sw-is-mobile .tl-hint { display: none; }
+.sw-is-mobile .tl-rail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(18rem, 86vw);
+  z-index: 6;
+  overflow-y: auto;
+  box-shadow: var(--sw-elev-4);
+  animation: swSlideIn 0.24s var(--sw-spring) both;
+}
+
+/* ---------------- панель проектов на телефоне ---------------- */
+
+.sw-mdash-head {
+  background: color-mix(in srgb, var(--sw-bg) 86%, transparent);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border-bottom: 1px solid color-mix(in srgb, var(--sw-border) 70%, transparent);
+}
+.sw-mcard { -webkit-tap-highlight-color: transparent; }
+.sw-mcard .sw-type-mix { margin-top: 14px; }
+
+.sw-palette-close { display: none; }
+@media (max-width: 767px) {
+  .sw-palette-host > div > div:first-child { padding: 10px 12px 10px 16px; min-height: 60px; }
+  .sw-palette-host input { font-size: 17px; }
+  .sw-palette-close {
+    display: inline-flex;
+    align-items: center;
+    height: 38px;
+    padding: 0 12px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--sw-accent);
+  }
+  .sw-palette-close:active { background: var(--sw-hover); }
+}
+.sw-is-mobile .sw-mfloat { width: max-content; font-size: 13px; padding: 10px 16px; }
+
+/* =====================================================================
+   Жесты, прокрутка и скорость на настоящем телефоне.
+   ===================================================================== */
+
+/* За ручку и шапку шторку тянут — браузер не должен забирать этот жест себе
+   (иначе он присылает pointercancel посреди протяжки). Остальное содержимое
+   шторки прокручивается системой как обычно. */
+.sw-sheet-grip,
+.sw-sheet [data-sheet-drag],
+.sw-sheet .sw-sheet-head,
+.sw-sheet .sw-preview-head,
+.sw-sheet .sw-as-head { touch-action: none; }
+.sw-sheet-grip { padding: 10px 0 8px; }
+.sw-sheet-grip span { width: 42px; height: 5px; }
+/* Прокрутка в шторках — плавная, с инерцией, без «перепрыгивания» на холст. */
+.sw-sheet .sw-scroll-y,
+.sw-sheet .sw-sheet-body,
+.sw-sheet .sw-as-list { touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+
+/* Колонка во флексе по умолчанию не ужимается меньше своего содержимого —
+   и тогда прокручиваемый список внутри неё растягивается во всю длину, а окно
+   его обрезает: прокручивать становится нечего. */
+.sw-sheet .sw-dock-in-sheet > .flex-1 { min-height: 0; }
+@media (max-width: 767px) {
+  .sw-settings-main { min-height: 0; }
+  .sw-palette-host .sw-palette-list { min-height: 0; }
+}
+
+/* Видеочип телефона — не видеокарта компьютера. Всё, что пересчитывается на
+   каждый кадр движения холста или шторки, на телефоне выключено:
+   размытие фона, зерно и виньетка во весь экран, блики и тени карточек. */
+.sw-is-mobile .sw-glass,
+.sw-is-mobile .df-picker-pop,
+.sw-is-mobile .sw-mdash-head {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+.sw-is-mobile .sw-glass { background: var(--sw-surface-2); }
+.sw-is-mobile .sw-mdash-head { background: var(--sw-bg); }
+.sw-is-mobile .sw-canvas-grain,
+.sw-is-mobile .sw-canvas-vignette,
+.sw-is-mobile body::before { display: none; }
+.sw-is-mobile .sw-sheet { box-shadow: 0 -2px 18px rgba(0, 0, 0, 0.35); }
+.sw-is-mobile .sw-sheet-backdrop { will-change: opacity; }
+.sw-is-mobile .sw-sheet { will-change: transform; contain: layout paint; }
+
+/* Мгновенный отклик на касание — раньше, чем успеет отработать скрипт: палец
+   должен видеть, что нажатие принято. */
+.sw-is-mobile .sw-preview-edit:active,
+.sw-is-mobile .sw-preview-act:active { transform: scale(0.95); }
+
+/* ---------------- описание на телефоне ---------------- */
+
+/* Собранный текст в панели узла: читается как документ, касание — писать. */
+.sw-mdesc {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 96px;
+  padding: 14px 44px 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--sw-border);
+  background: color-mix(in srgb, var(--sw-bg) 55%, transparent);
+  text-align: left;
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: var(--sw-text);
+}
+.sw-mdesc:active { background: var(--sw-hover); }
+.sw-mdesc-empty { color: var(--sw-text-mute); }
+.sw-mdesc-pen {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--sw-surface-2);
+  color: var(--sw-text-dim);
+}
+
+/* Лист для письма: поле во весь экран, кнопки — последней строкой. Шторка
+   ужимается вместе с экраном, когда выезжает клавиатура, поэтому строка
+   кнопок сама оказывается прямо над ней — без position: fixed. */
+.sw-writer { padding-bottom: 0; }
+.sw-writer-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+  font-size: 14.5px;
+  font-weight: 700;
+}
+.sw-writer-done:active { transform: scale(0.95); }
+.sw-writer-input {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  padding: 4px 20px 24px;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--sw-text);
+  font-family: var(--sw-font);
+  font-size: 17px !important;
+  line-height: 1.65;
+  caret-color: var(--sw-accent);
+  overscroll-behavior: contain;
+}
+.sw-writer-input::placeholder { color: var(--sw-text-mute); }
+.sw-writer-nodes {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-top: 1px solid var(--sw-border);
+  background: var(--sw-surface);
+}
+.sw-writer-nodes::-webkit-scrollbar { display: none; }
+.sw-writer-nodes > button {
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sw-accent) 15%, var(--sw-surface-2));
+  color: var(--sw-text);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sw-writer-bar {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 6px calc(8px + var(--sw-safe-right)) calc(6px + var(--sw-safe-bottom)) calc(8px + var(--sw-safe-left));
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--sw-surface-2);
+  border-top: 1px solid var(--sw-border);
+}
+.sw-writer-bar::-webkit-scrollbar { display: none; }
+/* Клавиатура открыта — нижнего системного отступа под кнопками не нужно. */
+.sw-keyboard .sw-writer-bar { padding-bottom: 6px; }
+
+/* Старые WebView не знают dvh — для них та же высота в vh. */
+.sw-sheet { max-height: calc(100vh - var(--sw-safe-top) - 10px); max-height: calc(100dvh - var(--sw-safe-top) - 10px); }
+.sw-sheet[data-detent="full"] { height: calc(100vh - var(--sw-safe-top) - 10px); height: calc(100dvh - var(--sw-safe-top) - 10px); }
+
+/* ---------------- ещё легче для слабых телефонов ---------------- */
+
+/* Никаких переходов цвета и тени у карточек и линий: на слабом телефоне
+   каждый такой переход — лишние кадры перерисовки на тап. */
+.sw-is-mobile .react-flow__node,
+.sw-is-mobile .sw-node-card,
+.sw-is-mobile .react-flow__edge-path { transition: none !important; animation: none !important; }
+.sw-is-mobile .sw-node-card { box-shadow: none !important; }
+.sw-is-mobile body { transition: none; }
+.sw-sheet.sw-action-sheet { max-height: min(78vh, calc(100vh - var(--sw-safe-top) - 10px)); max-height: min(78dvh, calc(100dvh - var(--sw-safe-top) - 10px)); }
+.sw-writer-bar .sw-lmd-kbtn {
+  flex: none;
+  width: 46px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: var(--sw-text);
+}
+.sw-writer-bar .sw-lmd-kbtn:active { background: var(--sw-hover); }
+.sw-mdesc .sw-md { font-size: 15.5px; line-height: 1.6; }
+.sw-mdesc .sw-md h1, .sw-mdesc .sw-md h2, .sw-mdesc .sw-md h3 { font-family: var(--sw-font-display); }
+
+/* =====================================================================
+   Узел — страница (телефон).
+   Сверху «назад», тип и «⋯»; крупное название; сразу текст; потом связи и
+   теги. Тип, даты, страница, картинка и поля — под «Подробнее».
+   ===================================================================== */
+
+.sw-npage-head { flex: none; padding: 0 16px 4px 8px; }
+.sw-npage-bar { display: flex; align-items: center; gap: 4px; height: 48px; }
+.sw-npage-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 62vw;
+  height: 36px;
+  padding: 0 12px 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--node-tone) 16%, var(--sw-surface-2));
+  color: var(--sw-text);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.sw-npage-type:active { transform: scale(0.96); }
+.sw-npage-type .sw-node-badge-icon { width: 24px; height: 24px; border-radius: 999px; }
+.sw-npage-title {
+  font-family: var(--sw-font-display) !important;
+  font-size: 27px !important;
+  font-weight: 700;
+  line-height: 1.22 !important;
+  letter-spacing: -0.02em;
+  padding: 4px 8px 6px 12px !important;
+  min-height: 0 !important;
+  color: var(--sw-text);
+  box-shadow: none !important;
+}
+
+.sw-npage-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 6px 20px 48px;
+}
+.sw-npage-body > .sw-sec-desc { order: 1; padding-left: 0 !important; }
+.sw-npage-body > .sw-sec-links { order: 2; }
+.sw-npage-body > .sw-sec-tags { order: 3; }
+.sw-npage-body > .sw-npage-more { order: 4; }
+.sw-npage-body > .sw-sec-type { order: 5; }
+.sw-npage-body > .sw-sec-dates { order: 6; }
+.sw-npage-body > .sw-sec-canvas { order: 7; }
+.sw-npage-body > .sw-sec-image { order: 8; }
+.sw-npage-body > .sw-sec-fields { order: 9; }
+.sw-npage-body:not(.is-details) > .sw-sec-type,
+.sw-npage-body:not(.is-details) > .sw-sec-dates,
+.sw-npage-body:not(.is-details) > .sw-sec-canvas,
+.sw-npage-body:not(.is-details) > .sw-sec-image,
+.sw-npage-body:not(.is-details) > .sw-sec-fields { display: none; }
+.sw-npage-body label { font-size: 12px !important; letter-spacing: 0.12em !important; }
+.sw-npage-body .sw-sec-links button,
+.sw-npage-body .sw-sec-links a { min-height: 40px; }
+.sw-npage-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 14px;
+  background: var(--sw-surface-2);
+  color: var(--sw-text-dim);
+  font-size: 14px;
+  text-align: left;
+}
+.sw-npage-more svg { flex: none; transition: transform 0.2s var(--sw-ease); }
+.sw-npage-body.is-details > .sw-npage-more svg { transform: rotate(180deg); }
+/* Пока пишут, снизу запас: строка с курсором не уходит под кнопки. */
+.sw-writing .sw-npage-body { padding-bottom: 45vh; }
+
+/* Текст узла: собранный — как документ, без рамки; в правке — то же место. */
+.sw-npage-body .sw-mdesc {
+  border: 0;
+  background: transparent;
+  padding: 2px 0;
+  min-height: 72px;
+  border-radius: 0;
+}
+.sw-npage-body .sw-mdesc:active { background: transparent; opacity: 0.85; }
+.sw-npage-body .sw-mdesc .sw-md { font-size: 17px; line-height: 1.65; }
+.sw-npage-body .sw-mdesc-empty { font-size: 17px; }
+.sw-mdesc-input {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  padding: 2px 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: var(--sw-text);
+  font-family: var(--sw-font);
+  font-size: 17px !important;
+  line-height: 1.65;
+  caret-color: var(--sw-accent);
+}
+.sw-mdesc-input::placeholder { color: var(--sw-text-mute); }
+
+/* Кнопки над клавиатурой. */
+.sw-kbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 95;
+  background: var(--sw-surface-2);
+  border-top: 1px solid var(--sw-border);
+}
+.sw-kbar .sw-writer-nodes { border-top: 0; border-bottom: 1px solid var(--sw-border); background: var(--sw-surface); }
+.sw-kbar-row { display: flex; align-items: center; gap: 4px; padding: 6px 8px; }
+.sw-kbar-tools { flex: 1; min-width: 0; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; touch-action: pan-x; }
+.sw-kbar-tools::-webkit-scrollbar { display: none; }
+.sw-kbtn {
+  flex: none;
+  width: 46px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: var(--sw-text);
+}
+.sw-kbtn:active { background: var(--sw-hover); }
+.sw-kdone {
+  flex: none;
+  width: 48px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+}
+
+/* =====================================================================
+   Мир списком — главный экран проекта на телефоне.
+   ===================================================================== */
+
+.sw-world {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--sw-bg);
+}
+.sw-world-top { flex: none; padding: 12px 16px 6px; display: flex; flex-direction: column; gap: 10px; }
+.sw-world-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px 4px; }
+.sw-world-chips::-webkit-scrollbar { display: none; }
+.sw-world-chips button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--sw-surface-2);
+  color: var(--sw-text-dim);
+  font-size: 14px;
+  font-weight: 600;
+}
+.sw-world-chips button[data-active="true"] { background: var(--sw-text); color: var(--sw-bg); }
+.sw-world-chips button i { width: 8px; height: 8px; border-radius: 99px; background: var(--node-color); }
+.sw-world-chips button span { font-family: var(--sw-font-mono); font-size: 11.5px; opacity: 0.7; font-weight: 500; }
+.sw-world-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 8px calc(var(--sw-mdock-h) + 40px + var(--sw-safe-bottom));
+}
+.sw-world-group { margin-bottom: 10px; }
+.sw-world-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 12px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sw-text-dim);
+}
+.sw-world-head i { width: 8px; height: 8px; border-radius: 99px; background: var(--node-color); }
+.sw-world-head span { margin-left: auto; font-family: var(--sw-font-mono); letter-spacing: 0; font-weight: 500; color: var(--sw-text-mute); }
+.sw-world-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 12px;
+  border-radius: 16px;
+  text-align: left;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 64px;
+}
+.sw-world-row:active { background: var(--sw-hover); }
+.sw-world-icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sw-world-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sw-world-title { font-size: 16.5px; font-weight: 600; color: var(--sw-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-world-sub { font-size: 13.5px; color: var(--sw-text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-world-deg { flex: none; display: inline-flex; align-items: center; gap: 4px; font-family: var(--sw-font-mono); font-size: 12px; color: var(--sw-text-mute); }
+.sw-world-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 18vh 24px 0; }
+.sw-world-add {
+  margin-top: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 50px;
+  padding: 0 24px;
+  border-radius: 16px;
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+  font-size: 16px;
+  font-weight: 700;
+}
+.sw-mdesc-input:focus,
+.sw-mdesc-input:focus-visible { outline: none !important; box-shadow: none !important; border: 0 !important; }

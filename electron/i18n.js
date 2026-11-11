@@ -1,4 +1,11 @@
 "use strict";
+
+// Команды для разработчика — в синтаксисе его системы.
+const VENV_HINT = process.platform === "win32"
+  ? "  python -m venv backend\\.venv\n"
+    + "  backend\\.venv\\Scripts\\python.exe -m pip install -r backend\\requirements.txt"
+  : "  python3 -m venv backend/.venv\n"
+    + "  backend/.venv/bin/python -m pip install -r backend/requirements.txt";
 /**
  * Язык оболочки: меню, системные диалоги, страница ошибки.
  *
@@ -59,8 +66,7 @@ const DICTS = {
       missingDetail: "Expected file:\n{path}\n\nThe installation looks damaged — reinstall BlueGem.",
       noVenv: "The backend/.venv environment was not found.",
       noVenvDetail: "To run in development mode, create it:\n"
-        + "  python -m venv backend\\.venv\n"
-        + "  backend\\.venv\\Scripts\\python.exe -m pip install -r backend\\requirements.txt",
+        + VENV_HINT,
       exited: "The built-in server exited with code {code}.",
       silent: "The server left no error message.",
       timeout: "The built-in server did not respond in time.",
@@ -136,8 +142,7 @@ const DICTS = {
       missingDetail: "Ожидался файл:\n{path}\n\nПохоже, установка повреждена — переустановите BlueGem.",
       noVenv: "Не найдено окружение backend/.venv.",
       noVenvDetail: "Для запуска в режиме разработки создайте его:\n"
-        + "  python -m venv backend\\.venv\n"
-        + "  backend\\.venv\\Scripts\\python.exe -m pip install -r backend\\requirements.txt",
+        + VENV_HINT,
       exited: "Встроенный сервер завершился с кодом {code}.",
       silent: "Сервер не оставил сообщений об ошибке.",
       timeout: "Встроенный сервер не ответил за отведённое время.",

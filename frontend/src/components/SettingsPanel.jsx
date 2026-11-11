@@ -19,6 +19,7 @@ import {
   DEFAULT_SETTINGS, DEFAULT_EDGE_COLOR, relTypesOf, fontStack, accentForeground,
 } from "@/lib/settings";
 import { LANGUAGES, getLanguage, setLanguage, tList, useT } from "@/lib/i18n";
+import { useBackHandler } from "@/lib/platform";
 import { scrollWithin } from "@/lib/scrollWithin";
 import CalendarEditor from "@/components/chrono/CalendarEditor";
 import EraEditor from "@/components/chrono/EraEditor";
@@ -66,6 +67,8 @@ export default function SettingsPanel({
   relUsage = {}, highlightType, onHighlighted,
 }) {
   const t = useT();
+  // «Назад» на телефоне закрывает окно настроек, а не уходит со страницы.
+  useBackHandler(onClose);
   const s = settings;
   const set = (patch) => onChange({ ...s, ...patch });
   const [iconPickerFor, setIconPickerFor] = useState(null);

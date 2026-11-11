@@ -29,17 +29,47 @@ win:
     - target: portable
       arch: [x64]
 
+# Linux: AppImage — один файл, запускается на любом дистрибутиве без
+# установки и умеет обновляться сам (electron/update.js); deb — пакет для
+# Ubuntu, Debian, Mint и родни, с ярлыком в меню и связью с .bgproj.
+# Собирать на Linux: сервер замораживает PyInstaller, а он собирает только
+# под систему, на которой запущен (npm run dist:linux).
+linux:
+  icon: build/icon.png
+  executableName: bluegem
+  category: Office
+  synopsis: Visual worldbuilding on an infinite canvas
+  description: >-
+    Offline worldbuilding tool for writers and game masters: characters,
+    factions, locations and events connected on one canvas.
+  # Без адреса: пакет собирается не от имени конкретного человека.
+  maintainer: BlueGem
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  desktop:
+    entry:
+      StartupWMClass: BlueGem
+      Keywords: worldbuilding;story;writing;graph;canvas;
+
 fileAssociations:
   - ext: bgproj
     name: BlueGem Project
     description: Проект BlueGem
     icon: build/file-icon.ico
     role: Editor
+    # Для Linux: тип файла в системной базе MIME, иначе файловый менеджер
+    # не свяжет .bgproj с приложением.
+    mimeType: application/x-bluegem-project
   - ext: swproj
     name: BlueGem Project (старое расширение)
     description: Проект BlueGem
     icon: build/file-icon.ico
     role: Editor
+    mimeType: application/x-bluegem-project
 
 nsis:
   oneClick: false

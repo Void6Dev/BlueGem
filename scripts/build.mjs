@@ -63,4 +63,6 @@ if (!existsSync(join(ROOT, "electron", "feedback.local.json"))) {
     + " будет только через GitHub. Как его завести — в шапке scripts/feedback-relay.gs.");
 }
 
-console.log("\nГотово. Теперь можно упаковать: npx electron-builder --win nsis portable");
+console.log(process.platform === "win32"
+  ? "\nГотово. Теперь можно упаковать: npx electron-builder --win nsis portable"
+  : "\nГотово. Теперь можно упаковать: npx electron-builder --linux AppImage deb");

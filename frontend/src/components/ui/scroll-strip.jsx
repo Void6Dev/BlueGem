@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { useSlidingThumb } from "@/lib/useSlidingThumb";
 
 /**
  * Горизонтальная полоса без полосы прокрутки — для вкладок холстов.
@@ -13,9 +14,12 @@ import { useCallback, useEffect, useRef } from "react";
  *
  * @param activeKey что считать активным: при его смене полоса доводит до
  *                  элемента с [data-active="true"].
+ * @param thumb     подсвечивать активный элемент общим ползунком, который
+ *                  переезжает между вкладками (см. lib/useSlidingThumb.js).
  */
-export default function ScrollStrip({ className = "", activeKey, children, ...rest }) {
+export default function ScrollStrip({ className = "", activeKey, thumb = false, children, ...rest }) {
   const ref = useRef(null);
+  useSlidingThumb(ref, [activeKey, thumb], '[data-active="true"]');
 
   // Атрибут, а не состояние: прокрутка приходит на каждый кадр, и
   // перерисовывать ради неё ряд вкладок незачем.
@@ -71,9 +75,10 @@ export default function ScrollStrip({ className = "", activeKey, children, ...re
     <div
       ref={ref}
       onScroll={sync}
-      className={`sw-scroll-strip sw-no-scrollbar overflow-x-auto ${className}`}
+      className={`sw-scroll-strip sw-no-scrollbar overflow-x-auto ${thumb ? "sw-thumb-host" : ""} ${className}`}
       {...rest}
     >
+      {thumb && <span className="sw-thumb" aria-hidden="true" />}
       {children}
     </div>
   );

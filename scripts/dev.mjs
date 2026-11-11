@@ -20,11 +20,14 @@ const children = [];
 function shutdown(code = 0) {
   for (const child of children) {
     if (child.exitCode === null) {
-      try {
+      if (process.platform === "win32") {
         // На Windows dev-сервер порождает дочерние процессы — снимаем дерево.
-        spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true });
-      } catch {
-        child.kill();
+        spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true })
+          .on("error", () => child.kill());
+      } else {
+        // На Linux и macOS taskkill нет: процесс CRA сам гасит своих детей по
+        // SIGTERM.
+        child.kill("SIGTERM");
       }
     }
   }

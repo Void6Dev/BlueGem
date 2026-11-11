@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { ChevronRight, Plus, Shapes } from "lucide-react";
+import { ChevronRight, Hash, Plus, Shapes } from "lucide-react";
 import { NodeIcon } from "@/components/NodeIcon";
 import { Segmented } from "@/components/ui/segmented";
 import { useT } from "@/lib/i18n";
@@ -116,6 +116,11 @@ export default memo(function WorldTree({
 }) {
   const tr = useT();
   const [allTagsOpen, setAllTagsOpen] = useState(false);
+  // Облако тегов свёрнуто за кнопку «#»: восемь пилюль над деревом
+  // всегда стояли между поиском и самим миром, хотя фильтруют ими редко.
+  // Пока какой-то тег включён, ряд открыт — иначе фильтр работал бы невидимо.
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const showTags = tagsOpen || activeTags.size > 0;
   const shownTags = allTagsOpen ? allTags : allTags.slice(0, TAGS_SHOWN);
   // Пока ищут или фильтруют, пустые группы — шум: показываем только те, где
   // что-то нашлось, и все они раскрыты, иначе найденное пряталось бы в
@@ -135,10 +140,23 @@ export default memo(function WorldTree({
             { id: "all", label: tr("editor.scopeAll") },
           ]}
         />
+        {allTags.length > 0 && (
+          <button
+            type="button"
+            data-testid="tag-filter-toggle"
+            aria-pressed={showTags}
+            onClick={() => setTagsOpen((v) => !v)}
+            title={tr("editor.tagFilter")}
+            className="sw-tagfilter-btn"
+          >
+            <Hash className="w-3.5 h-3.5" />
+            {activeTags.size > 0 && <span className="sw-tagfilter-count">{activeTags.size}</span>}
+          </button>
+        )}
       </div>
 
-      {allTags.length > 0 && (
-        <div className="px-4 pb-3 flex flex-wrap gap-1 items-center" data-testid="tag-filter-bar">
+      {allTags.length > 0 && showTags && (
+        <div className="sw-tagfilter-bar px-4 pb-3 flex flex-wrap gap-1 items-center" data-testid="tag-filter-bar">
           {shownTags.map((t) => (
             <button
               key={t}

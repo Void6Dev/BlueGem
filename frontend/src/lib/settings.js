@@ -1,3 +1,5 @@
+import { syncSystemBars } from "@/lib/platform";
+
 export const FONT_OPTIONS = [
   { id: "Manrope", label: "Manrope" },
   { id: "Inter", label: "Inter" },
@@ -196,6 +198,8 @@ export function applySettings(settings, { remember = true } = {}) {
   // Keep the browser chrome (mobile address bar) in sync with the theme.
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", light ? "#F7F7F6" : "#0A0A0F");
+  // На телефоне — значки системных панелей под тему.
+  syncSystemBars(light);
   if (remember) rememberAppearance(settings);
 }
 

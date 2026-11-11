@@ -1,3 +1,6 @@
+import { useRef } from "react";
+import { useSlidingThumb } from "@/lib/useSlidingThumb";
+
 /**
  * Переключатель «одно из нескольких» одной строкой.
  *
@@ -6,18 +9,24 @@
  * по умолчанию), "accent" (заливка акцентом), "glass" (компактный, для
  * тулбара поверх стекла).
  *
+ * Выбранное подсвечивает не сам пункт, а общий ползунок под пунктами — он
+ * переезжает к новому выбору (см. lib/useSlidingThumb.js).
+ *
  * options: [{ id, label, icon: Component, hint }]
  */
 export function Segmented({ options, value, onChange, variant = "surface", className = "", testIdPrefix }) {
+  const ref = useRef(null);
+  useSlidingThumb(ref, [value]);
   const cls = [
-    "sw-seg",
+    "sw-seg sw-thumb-host",
     variant === "glass" ? "sw-seg-glass" : "",
     variant === "accent" || variant === "glass" ? "sw-seg-accent" : "",
     className,
   ].filter(Boolean).join(" ");
 
   return (
-    <div className={cls} role="group">
+    <div ref={ref} className={cls} role="group">
+      <span className="sw-thumb" aria-hidden="true" />
       {options.map((o) => {
         const Icon = o.icon;
         const active = value === o.id;

@@ -602,6 +602,36 @@ kbd {
   flex-shrink: 0;
   padding-left: 2px;
 }
+/* «Проект / Холст ▾» — путь вместо полосы вкладок. Косая черта тише имени. */
+.sw-topbar-crumb { color: var(--sw-text-mute); font-size: 15px; flex-shrink: 0; margin: 0 -2px; }
+.sw-canvas-switch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  min-width: 0;
+  max-width: 240px;
+  padding: 0 8px 0 9px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sw-text);
+  transition: background-color 0.14s var(--sw-ease);
+}
+.sw-canvas-switch:hover { background: var(--sw-hover); }
+.sw-canvas-switch-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--sw-accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--sw-accent) 70%, transparent);
+}
+.sw-canvas-switch-count {
+  font-family: var(--sw-font-mono);
+  font-size: 11px;
+  color: var(--sw-text-mute);
+}
 .sw-topbar-sep { width: 1px; height: 18px; background: var(--sw-border); flex-shrink: 0; margin: 0 2px; }
 .sw-topbar-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 0 1 auto; }
 .sw-topbar-search {
@@ -1610,7 +1640,13 @@ kbd {
   padding: 4px;
   border-radius: 12px;
   border: 1px solid var(--sw-border);
-  animation: swPreviewIn 0.14s var(--sw-ease-out) both;
+  /* Свои кадры, а не swPreviewIn: тот заканчивается на transform: none и
+     с заливкой both снимал translateX(-50%) — панель съезжала вправо. */
+  animation: swSelbarIn 0.36s var(--sw-bounce) both;
+}
+@keyframes swSelbarIn {
+  from { opacity: 0; transform: translate(-50%, -10px) scale(0.94); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
 }
 .sw-selbar-count {
   padding: 0 8px 0 10px;
@@ -1655,7 +1691,9 @@ kbd {
    ровно один раз при появлении узла — и связь потом рисуется мимо точки.
    Поэтому масштаб при появлении живёт на внутренней карточке. */
 .sw-node-in { animation: swFadeIn 0.32s var(--sw-ease) backwards; }
-.sw-node-card-in { animation: swNodeIn 0.32s var(--sw-ease) backwards; }
+/* Карточка «садится» на холст с маленьким перелётом — новый узел видно
+   краем глаза, даже если смотрел в другой угол. */
+.sw-node-card-in { animation: swNodeIn 0.46s var(--sw-bounce) backwards; }
 /* На большом графе вход не анимируется вовсе: staggered появление двухсот
    карточек — мучительная секунда на каждом открытии проекта. */
 .sw-no-node-anim .sw-node-in, .sw-no-node-anim .sw-node-card-in { animation: none; }
@@ -1669,7 +1707,8 @@ kbd {
 }
 
 @keyframes swNodeIn {
-  from { opacity: 0; transform: scale(0.94) translateY(6px); }
+  from { opacity: 0; transform: scale(0.9) translateY(10px); }
+  45% { opacity: 1; }
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
@@ -1801,6 +1840,41 @@ kbd {
 }
 .sw-tree-newtype:hover { background: var(--sw-hover); color: var(--sw-text); }
 /* Фильтр по тегам: плотные пилюли, выбранная — акцентом. */
+/* Кнопка фильтра по тегам рядом с охватом дерева: размер и форма — как у
+   сегмента рядом, включённая — заливка акцентом. */
+.sw-tagfilter-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0 7px;
+  border-radius: 9px;
+  background: var(--sw-surface-2);
+  color: var(--sw-text-dim);
+  transition: background-color 0.16s var(--sw-ease), color 0.16s var(--sw-ease);
+}
+.sw-tagfilter-btn:hover { color: var(--sw-text); }
+.sw-tagfilter-btn[aria-pressed="true"] { color: var(--sw-text); background: var(--sw-surface-3); }
+.sw-tagfilter-count {
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+}
+/* Ряд тегов выезжает из-под кнопки, а не появляется скачком. */
+.sw-tagfilter-bar { animation: swTagsIn 0.28s var(--sw-ease-emph) both; transform-origin: top; }
+@keyframes swTagsIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
 .sw-tag-chip {
   font-size: 11px;
   line-height: 18px;
@@ -1961,6 +2035,54 @@ kbd {
   overflow: hidden;
 }
 
+/* Панель узла на компьютере. Порядок — по частоте: сначала свойства
+   короткими строками (дата, холст), потом текст и связи, теги и поля, а
+   изображение в конце — оно есть у немногих узлов. Раньше каждое свойство
+   было отдельной секцией с крупной меткой капителью и полем во всю ширину,
+   и до описания приходилось листать. */
+.sw-npanel { display: flex; flex-direction: column; gap: 22px; }
+.sw-npanel > .sw-sec-dates { order: 1; }
+.sw-npanel > .sw-sec-canvas { order: 2; margin-top: -12px; }
+.sw-npanel > .sw-sec-desc { order: 3; }
+.sw-npanel > .sw-sec-links { order: 4; }
+.sw-npanel > .sw-sec-tags { order: 5; }
+.sw-npanel > .sw-sec-fields { order: 6; }
+.sw-npanel > .sw-sec-image { order: 7; }
+/* Свойство — строка «метка · значение», а не секция. */
+.sw-npanel > .sw-sec-dates,
+.sw-npanel > .sw-sec-canvas {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 12px;
+}
+.sw-npanel > .sw-sec-dates > label,
+.sw-npanel > .sw-sec-canvas > label {
+  padding-top: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--sw-text-mute);
+}
+.sw-npanel > .sw-sec-dates > .mt-2,
+.sw-npanel > .sw-sec-canvas > select { margin-top: 0; }
+.sw-npanel > .sw-sec-canvas > select { height: 30px; }
+
+/* Тип в шапке панели — кнопка: название типа и шеврон. */
+.sw-type-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: -4px;
+  padding: 2px 6px 2px 4px;
+  border-radius: 6px;
+  color: var(--node-color, var(--sw-text-dim));
+  transition: background-color 0.14s var(--sw-ease);
+}
+.sw-type-trigger:hover,
+.sw-type-trigger[aria-expanded="true"] { background: color-mix(in srgb, var(--node-color, var(--sw-accent)) 12%, transparent); }
+
 /* Ползунок, который переезжает к активному полю в редакторе узла. */
 .sw-field-rail {
   position: absolute;
@@ -2027,6 +2149,480 @@ kbd {
   background-size: 800px 100%;
   animation: swShimmer 1.4s linear infinite;
   border-radius: 8px;
+}
+
+/* ==================================================================
+   Движение. Одно правило на весь блок: анимация объясняет, откуда вещь
+   пришла и куда ушла, а не украшает. Всё — transform и opacity (плюс
+   короткий blur там, где элемент один), чтобы не будить раскладку.
+   На холсте ничего постоянно движущегося: там каждый кадр на счету.
+   ================================================================== */
+:root {
+  /* Пружина с лёгким перелётом — для того, что «приезжает» по выбору. */
+  --sw-bounce: cubic-bezier(0.34, 1.36, 0.64, 1);
+  /* Мягкий выход без перелёта — для крупных поверхностей. */
+  --sw-ease-emph: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---------------- скользящий ползунок ----------------
+   Одна подложка под пунктами переключателя едет к выбранному
+   (lib/useSlidingThumb.js). Пока подложка не расставлена, выбранный пункт
+   красится сам, как раньше, — первый кадр не остаётся без выделения. */
+/* :where — нулевая специфичность: если контейнер уже позиционирован сам
+   (нижняя панель телефона — absolute), его position остаётся. */
+:where(.sw-thumb-host) { position: relative; }
+.sw-thumb-host { isolation: isolate; }
+.sw-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform;
+}
+.sw-thumb-host[data-thumb-anim] > .sw-thumb {
+  transition: transform 0.42s var(--sw-bounce), width 0.42s var(--sw-bounce),
+    height 0.32s var(--sw-ease), opacity 0.18s var(--sw-ease),
+    background-color 0.2s var(--sw-ease);
+}
+.sw-thumb-host > :not(.sw-thumb) { position: relative; z-index: 1; }
+
+/* Сегменты: подложка повторяет вид выбранного пункта. */
+.sw-seg > .sw-thumb {
+  border-radius: 6px;
+  background: var(--sw-surface-3);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.sw-light .sw-seg > .sw-thumb { box-shadow: var(--sw-elev-1); }
+.sw-seg-accent > .sw-thumb {
+  background: var(--sw-accent);
+  box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--sw-accent) 55%, transparent);
+}
+.sw-seg[data-thumb] .sw-seg-item[aria-pressed="true"] { background: transparent; box-shadow: none; }
+
+/* Переключатель языка на главной — тот же приём, круглая форма. */
+.sw-langseg {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--sw-border);
+}
+.sw-langseg > .sw-thumb {
+  border-radius: 999px;
+  background: var(--sw-accent);
+  box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--sw-accent) 60%, transparent);
+}
+.sw-langseg-item {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--sw-text-dim);
+  transition: color 0.22s var(--sw-ease);
+}
+.sw-langseg-item:hover { color: var(--sw-text); }
+.sw-langseg-item[aria-pressed="true"] { color: var(--sw-accent-fg); }
+
+/* Вкладки холстов: подложка выбранного холста едет между вкладками. */
+.sw-topbar-tabs > .sw-thumb {
+  border-radius: 6px;
+  background: var(--sw-surface-2);
+}
+.sw-topbar-tabs[data-thumb] > [data-active="true"] { background: transparent !important; }
+/* Точка выбранного холста загорается с маленьким толчком. */
+.sw-tab-dot { transition: background-color 0.2s var(--sw-ease), transform 0.3s var(--sw-bounce); }
+[data-active="true"] > .sw-tab-dot {
+  transform: scale(1.35);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--sw-accent) 70%, transparent);
+}
+
+/* Палитра команд: подсветка строки скользит за курсором и стрелками. */
+.sw-palette-list > .sw-thumb {
+  border-radius: 8px;
+  background: var(--sw-hover);
+  box-shadow: inset 2px 0 0 var(--sw-accent);
+}
+.sw-palette-list[data-thumb] > [data-active="true"] { background: transparent !important; }
+.sw-palette-list[data-thumb-anim] > .sw-thumb {
+  transition: transform 0.26s var(--sw-ease-emph), width 0.26s var(--sw-ease-emph),
+    height 0.26s var(--sw-ease-emph), opacity 0.14s var(--sw-ease);
+}
+.sw-palette-enter { animation: swPaletteRow 0.32s var(--sw-ease-emph) backwards; }
+@keyframes swPaletteRow {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Свои оверлеи (палитра, горячие клавиши): затемнение проявляется, а не
+   падает разом. */
+.sw-overlay-in { animation: swOverlayIn 0.24s var(--sw-ease) both; }
+
+/* Карточка проекта входит снизу с расфокуса; задержка — по месту в сетке.
+   backwards, а не both: после входа transform свободен для наведения. */
+.sw-card-in {
+  animation: swCardIn 0.65s var(--sw-ease-emph) backwards;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes swCardIn {
+  from { opacity: 0; transform: translateY(18px) scale(0.97); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+/* Нижняя панель редактора на телефоне: подложка раздела едет под пальцем.
+   Заливка стекла на телефоне уже surface-2 (mobile.css), поэтому подложка
+   на ступень выше — иначе она сливалась бы с панелью. */
+.sw-mdock > .sw-thumb {
+  border-radius: 18px;
+  background: var(--sw-surface-3);
+  box-shadow: var(--sw-elev-1);
+}
+.sw-mdock[data-thumb] > .sw-mdock-btn[data-active="true"] { background: transparent; }
+
+/* Карточка мира на телефоне: отклик на нажатие — короткое вжатие. */
+.sw-mcard { transition: transform 0.18s var(--sw-ease); }
+.sw-mcard:active { transform: scale(0.985); transition-duration: 0.08s; }
+
+/* Телефон: те же входы, но без расфокуса. filter: blur на слабом видеочипе
+   пересчитывается каждый кадр, а на маленьком экране его почти не видно. */
+.sw-is-mobile .sw-reveal,
+.sw-is-mobile .sw-card-in { animation-name: swRiseLite; }
+.sw-is-mobile .sw-shine-text { animation-name: swRiseLite, swShineText; }
+.sw-is-mobile .sw-dialog-content[data-state="open"] > * { animation-duration: 0.36s; }
+/* Размытие фона под шторкой — та же цена, что у стекла (см. mobile.css):
+   на телефоне только затемнение. */
+.sw-is-mobile .sw-dialog-overlay {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: rgba(4, 4, 8, 0.7);
+}
+.sw-is-mobile.sw-light .sw-dialog-overlay,
+.sw-is-mobile .sw-light .sw-dialog-overlay { background: rgba(20, 20, 28, 0.4); }
+.sw-is-mobile .sw-dialog-overlay[data-state="open"] { animation-name: swFadeIn; }
+@keyframes swRiseLite {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------------- вход страниц ----------------
+   Без выхода: AnimatePresence под React 19 держит отжившие страницы
+   (см. комментарий в Editor.jsx), поэтому только вход, и он короткий. */
+.sw-page-in { animation: swPageIn 0.5s var(--sw-ease-emph) both; }
+@keyframes swPageIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.995); }
+  to { opacity: 1; transform: none; }
+}
+/* Редактор: только прозрачность. Любой transform на предке холста
+   искажает замеры точек связи React Flow (см. .sw-node-in). */
+.sw-fade-in { animation: swFadeIn 0.45s var(--sw-ease) both; }
+.sw-topbar-in { animation: swTopbarIn 0.5s var(--sw-ease-emph) both; }
+@keyframes swTopbarIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: none; }
+}
+.sw-sidebar-in { animation: swSidebarIn 0.42s var(--sw-ease-emph) both; }
+@keyframes swSidebarIn {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------------- главная ---------------- */
+
+/* Сияние за шапкой: три мягких пятна акцента медленно плывут. Радиальные
+   градиенты вместо filter: blur — размытие во весь экран стоило бы кадра на
+   каждом шаге, а градиент рисуется один раз и дальше только сдвигается. */
+.sw-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.sw-aurora > i {
+  position: absolute;
+  width: 70vmax;
+  height: 70vmax;
+  border-radius: 50%;
+  will-change: transform;
+}
+.sw-aurora > i:nth-child(1) {
+  top: -42vmax; left: -18vmax;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--sw-accent) 16%, transparent), transparent);
+  animation: swDriftA 26s ease-in-out infinite alternate;
+}
+.sw-aurora > i:nth-child(2) {
+  top: -36vmax; right: -30vmax;
+  background: radial-gradient(closest-side, color-mix(in srgb, #9A63E8 11%, transparent), transparent);
+  animation: swDriftB 32s ease-in-out infinite alternate;
+}
+.sw-aurora > i:nth-child(3) {
+  bottom: -52vmax; left: 20vmax;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--sw-accent) 8%, transparent), transparent);
+  animation: swDriftC 38s ease-in-out infinite alternate;
+}
+.sw-light .sw-aurora > i { opacity: 0.7; }
+@keyframes swDriftA {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(14vmax, 8vmax) scale(1.12); }
+}
+@keyframes swDriftB {
+  from { transform: translate(0, 0) scale(1.05); }
+  to { transform: translate(-16vmax, 10vmax) scale(0.92); }
+}
+@keyframes swDriftC {
+  from { transform: translate(0, 0) scale(0.95); }
+  to { transform: translate(-10vmax, -12vmax) scale(1.1); }
+}
+/* Содержимое главной — над сиянием. Шапку не трогаем: она sticky, и
+   position: relative сняло бы прилипание. */
+.sw-dashboard > :not(.sw-aurora):not(header) { position: relative; z-index: 1; }
+
+/* Появление по очереди: строка за строкой, с расфокуса в резкость.
+   Задержка — через --d, чтобы порядок задавала разметка. */
+.sw-reveal {
+  animation: swReveal 0.8s var(--sw-ease-emph) both;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes swReveal {
+  from { opacity: 0; transform: translateY(14px); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+/* Заголовок героя: по тексту один раз проходит блик акцента. */
+.sw-shine-text {
+  background-image: linear-gradient(100deg,
+    var(--sw-text) 0%, var(--sw-text) 40%,
+    color-mix(in srgb, var(--sw-accent) 85%, white) 50%,
+    var(--sw-text) 60%, var(--sw-text) 100%);
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: swReveal 0.8s var(--sw-ease-emph) both, swShineText 2.2s var(--sw-ease) 0.7s both;
+  animation-delay: var(--d, 0ms), calc(var(--d, 0ms) + 0.6s);
+}
+@keyframes swShineText {
+  from { background-position: 100% 0; }
+  to { background-position: 0% 0; }
+}
+
+/* Логотип: изредка по камню пробегает грань света. */
+.sw-logo {
+  position: relative;
+  display: inline-flex;
+  border-radius: 10px;
+  overflow: hidden;
+  transition: transform 0.4s var(--sw-bounce);
+}
+.sw-logo:hover { transform: rotate(-8deg) scale(1.08); }
+.sw-logo::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background: linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, 0.55) 50%, transparent 62%);
+  transform: translateX(-120%);
+  animation: swGlint 7s var(--sw-ease) 1.2s infinite;
+  pointer-events: none;
+}
+@keyframes swGlint {
+  0% { transform: translateX(-120%); }
+  14%, 100% { transform: translateX(120%); }
+}
+
+/* Счётчики в герое: цифра не дёргает соседей, пока считает. */
+.sw-count { font-variant-numeric: tabular-nums; }
+
+/* Кнопка-призыв: на наведении по ней проходит отблеск. */
+.sw-shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.sw-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.45) 50%, transparent 70%);
+  transform: translateX(-110%);
+  pointer-events: none;
+}
+.sw-shine:hover::after { transform: translateX(110%); transition: transform 0.75s var(--sw-ease); }
+.sw-shine > svg { transition: transform 0.35s var(--sw-bounce); }
+.sw-shine:hover > svg:first-child { transform: rotate(90deg); }
+
+/* Карточка проекта: свет следует за курсором — по заливке и по рамке.
+   Координаты пишет onPointerMove в --mx/--my, без перерисовки React. */
+.sw-project-card {
+  --mx: 50%;
+  --my: 50%;
+  transition: transform 0.35s var(--sw-bounce), border-color 0.25s var(--sw-ease),
+    box-shadow 0.35s var(--sw-ease);
+}
+.sw-project-card:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--sw-accent) 45%, var(--sw-border));
+  box-shadow: var(--sw-elev-3),
+    0 18px 40px -24px color-mix(in srgb, var(--sw-accent) 45%, transparent);
+}
+.sw-project-card:active { transform: translateY(-1px) scale(0.99); transition-duration: 0.1s; }
+.sw-project-card::before,
+.sw-project-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s var(--sw-ease);
+}
+.sw-project-card::before {
+  background: radial-gradient(420px circle at var(--mx) var(--my),
+    color-mix(in srgb, var(--sw-accent) 11%, transparent), transparent 45%);
+}
+/* Рамка: тот же свет, но маской оставлена только полоска по краю. */
+.sw-project-card::after {
+  padding: 1px;
+  background: radial-gradient(260px circle at var(--mx) var(--my),
+    color-mix(in srgb, var(--sw-accent) 85%, transparent), transparent 60%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+.sw-project-card:hover::before,
+.sw-project-card:hover::after { opacity: 1; }
+.sw-project-card > * { position: relative; z-index: 1; }
+/* Значок книги приоткрывается навстречу. */
+.sw-project-icon { transition: transform 0.45s var(--sw-bounce), border-color 0.25s var(--sw-ease), background-color 0.25s var(--sw-ease); }
+.sw-project-card:hover .sw-project-icon {
+  transform: rotate(-6deg) scale(1.08);
+  border-color: color-mix(in srgb, var(--sw-accent) 50%, transparent);
+  background: color-mix(in srgb, var(--sw-accent) 10%, transparent);
+}
+/* «Открыть →» выезжает, стрелка тянется вперёд. */
+.sw-project-open {
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 0.25s var(--sw-ease), transform 0.35s var(--sw-ease-emph);
+}
+.sw-project-open > svg { transition: transform 0.35s var(--sw-bounce); }
+.sw-project-card:hover .sw-project-open { opacity: 1; transform: none; }
+.sw-project-card:hover .sw-project-open > svg { transform: translateX(4px); }
+/* Состав проекта прорастает слева направо, доля за долей — только пока
+   карточка входит (класс .sw-card-in снимается после входа). */
+.sw-card-in .sw-type-mix > span {
+  transform-origin: left center;
+  animation: swGrowX 0.7s var(--sw-ease-emph) backwards;
+  animation-delay: calc(var(--d, 0ms) + var(--i, 0) * 70ms);
+}
+@keyframes swGrowX {
+  from { transform: scaleX(0); opacity: 0; }
+  to { transform: scaleX(1); }
+}
+
+/* Пустая главная: узлы на орбите вокруг значка — подсказка, чем будет мир. */
+.sw-orbit {
+  position: relative;
+  width: 112px;
+  height: 112px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sw-orbit-core {
+  position: relative;
+  z-index: 1;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--sw-border);
+  background: var(--sw-surface);
+  box-shadow: var(--sw-elev-2);
+  animation: swFloat 4.5s ease-in-out infinite;
+}
+.sw-orbit-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px dashed color-mix(in srgb, var(--sw-border-strong) 80%, transparent);
+  animation: swSpin 24s linear infinite;
+}
+.sw-orbit-ring.is-inner { inset: 16px; animation-duration: 16s; animation-direction: reverse; border-style: solid; border-color: color-mix(in srgb, var(--sw-border) 70%, transparent); }
+.sw-orbit-ring > b {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--c, var(--sw-accent));
+  box-shadow: 0 0 10px var(--c, var(--sw-accent));
+}
+.sw-orbit-ring > b:nth-child(1) { top: -4.5px; left: calc(50% - 4.5px); }
+.sw-orbit-ring > b:nth-child(2) { bottom: 10%; right: 3%; }
+.sw-orbit-ring > b:nth-child(3) { bottom: 10%; left: 3%; }
+.sw-orbit-ring.is-inner > b { width: 7px; height: 7px; }
+.sw-orbit-pulse {
+  position: absolute;
+  inset: 28px;
+  border-radius: 16px;
+  border: 1px solid var(--sw-accent);
+  animation: swRipple 2.8s var(--sw-ease-out) infinite;
+}
+@keyframes swSpin { to { transform: rotate(360deg); } }
+@keyframes swFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes swRipple {
+  from { transform: scale(1); opacity: 0.55; }
+  to { transform: scale(1.9); opacity: 0; }
+}
+
+/* ---------------- диалоги ----------------
+   Окно поднимается из-под затемнения с расфокуса, закрывается быстрее, чем
+   открывается: уход не должен задерживать того, кто уже нажал «Отмена». */
+.sw-dialog-overlay[data-state="open"] { animation: swOverlayIn 0.28s var(--sw-ease) both; }
+.sw-dialog-overlay[data-state="closed"] { animation: swOverlayOut 0.18s var(--sw-ease-out) both; }
+.sw-dialog-overlay {
+  background: rgba(4, 4, 8, 0.62);
+  -webkit-backdrop-filter: blur(6px) saturate(1.2);
+  backdrop-filter: blur(6px) saturate(1.2);
+}
+.sw-light .sw-dialog-overlay { background: rgba(20, 20, 28, 0.28); }
+@keyframes swOverlayIn {
+  from { opacity: 0; -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0); }
+}
+@keyframes swOverlayOut { to { opacity: 0; } }
+.sw-dialog-content {
+  box-shadow: var(--sw-elev-4);
+}
+.sw-dialog-content[data-state="open"] { animation: swDialogIn 0.42s var(--sw-ease-emph) both; }
+.sw-dialog-content[data-state="closed"] { animation: swDialogOut 0.16s var(--sw-ease-out) both; }
+@keyframes swDialogIn {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 18px)) scale(0.96); filter: blur(4px); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: none; }
+}
+@keyframes swDialogOut {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(0.97); }
+}
+/* Содержимое окна догоняет рамку на полшага. */
+.sw-dialog-content[data-state="open"] > * {
+  animation: swRise2 0.5s var(--sw-ease-emph) backwards;
+}
+.sw-dialog-content[data-state="open"] > :nth-child(1) { animation-delay: 0.04s; }
+.sw-dialog-content[data-state="open"] > :nth-child(2) { animation-delay: 0.08s; }
+.sw-dialog-content[data-state="open"] > :nth-child(3) { animation-delay: 0.12s; }
+.sw-dialog-content[data-state="open"] > :nth-child(4) { animation-delay: 0.16s; }
+@keyframes swRise2 {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

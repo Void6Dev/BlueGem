@@ -1,3 +1,4 @@
+import { isMobileNow } from "@/lib/platform";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BaseEdge, EdgeLabelRenderer, Position, useReactFlow, useStore,
@@ -177,7 +178,9 @@ function GradientEdge(props) {
     }, [source, target, hasPoints])
   );
   const [fromColor, toColor, big, srcBox, tgtBox] = snapshot.split("|");
-  const plain = !!big;
+  // На телефоне линия всегда однотонная: градиент в каждой связи — это
+  // отдельная заливка на каждый кадр движения холста.
+  const plain = !!big || isMobileNow();
   const [srcRect, tgtRect] = useMemo(() => [srcBox, tgtBox].map((s) => {
     if (!s) return null;
     const [x, y, w, h] = s.split(",").map(Number);

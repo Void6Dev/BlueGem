@@ -1,0 +1,258 @@
+/* Блокнот описания (MarkdownEditor) — живое оформление поверх CodeMirror.
+   Задача стилей одна: текст должен читаться как документ, а не как поле
+   ввода. Поэтому ни рамок вокруг строк, ни моноширинного шрифта, ни серых
+   плашек — только типографика. */
+
+.sw-lmd { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+/* ---------------- панель кнопок (компьютер) ---------------- */
+
+.sw-lmd-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.sw-lmd-tools.is-scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.sw-lmd-tools.is-scroll::-webkit-scrollbar { display: none; }
+.sw-lmd-tool {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  font-family: var(--sw-font-mono);
+  font-size: 11px;
+  color: var(--sw-text-dim);
+  transition: background-color 0.14s var(--sw-ease), color 0.14s var(--sw-ease);
+}
+.sw-lmd-tool:hover { background: var(--sw-hover); color: var(--sw-text); }
+.sw-lmd-tool.is-on { color: var(--sw-accent); background: color-mix(in srgb, var(--sw-accent) 12%, transparent); }
+
+/* ---------------- сам текст ---------------- */
+
+.sw-lmd-host { min-width: 0; cursor: text; }
+.sw-lmd .cm-editor { background: transparent; color: var(--sw-text); }
+.sw-lmd .cm-editor.cm-focused { outline: none; }
+.sw-lmd .cm-scroller { font-family: var(--sw-font); line-height: 1.68; overflow: visible; }
+.sw-lmd .cm-content {
+  padding: 2px 0 10px;
+  font-size: 14.5px;
+  caret-color: var(--sw-accent);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.sw-lmd.is-large .cm-content { font-size: 17px; line-height: 1.75; max-width: 46rem; }
+.sw-is-mobile .sw-lmd .cm-content { font-size: 16.5px; line-height: 1.7; }
+.sw-lmd .cm-line { padding: 0; }
+.sw-lmd .cm-cursor { border-left: 2px solid var(--sw-accent); }
+.sw-lmd .cm-selectionBackground,
+.sw-lmd .cm-focused .cm-selectionBackground,
+.sw-lmd .cm-content ::selection { background: color-mix(in srgb, var(--sw-accent) 26%, transparent) !important; }
+.sw-lmd .cm-placeholder { color: var(--sw-text-mute); font-style: normal; }
+
+/* Заголовки — шрифтом заголовков, с воздухом сверху: так текст делится на
+   части с одного взгляда. */
+.sw-lmd .cm-md-h1, .sw-lmd .cm-md-h2, .sw-lmd .cm-md-h3,
+.sw-lmd .cm-md-h4, .sw-lmd .cm-md-h5, .sw-lmd .cm-md-h6 {
+  font-family: var(--sw-font-display);
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  color: var(--sw-text);
+}
+.sw-lmd .cm-md-h1 { font-size: 1.55em; font-weight: 700; padding-top: 0.45em; letter-spacing: -0.025em; }
+.sw-lmd .cm-md-h2 { font-size: 1.3em; padding-top: 0.4em; }
+.sw-lmd .cm-md-h3 { font-size: 1.12em; padding-top: 0.3em; }
+.sw-lmd .cm-md-h4, .sw-lmd .cm-md-h5, .sw-lmd .cm-md-h6 { font-size: 1em; color: var(--sw-text-dim); }
+
+.sw-lmd .cm-md-strong { font-weight: 700; }
+.sw-lmd .cm-md-em { font-style: italic; }
+.sw-lmd .cm-md-strike { text-decoration: line-through; text-decoration-color: var(--sw-text-mute); color: var(--sw-text-dim); }
+.sw-lmd .cm-md-code {
+  font-family: var(--sw-font-mono);
+  font-size: 0.86em;
+  padding: 0.12em 0.34em;
+  border-radius: 5px;
+  background: var(--sw-surface-2);
+}
+/* Значки разметки в строке с курсором: видны, но тише текста. */
+.sw-lmd .cm-md-mark { color: var(--sw-text-mute); font-weight: 400; font-style: normal; text-decoration: none; }
+.sw-lmd .cm-md-link { color: var(--sw-accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.sw-lmd .cm-md-link .cm-md-mark { text-decoration: none; }
+
+/* Цитата — полоса акцента слева, текст тише. */
+.sw-lmd .cm-md-quote {
+  border-left: 3px solid color-mix(in srgb, var(--sw-accent) 70%, transparent);
+  padding-left: 12px !important;
+  color: var(--sw-text-dim);
+}
+
+/* Списки: точка акцентом, номера — цифрами того же цвета. */
+.sw-lmd .cm-md-bullet {
+  display: inline-block;
+  width: 1.1em;
+  color: var(--sw-accent);
+  font-weight: 800;
+  text-align: center;
+}
+.sw-lmd .cm-md-olmark { color: var(--sw-accent); font-weight: 650; font-variant-numeric: tabular-nums; }
+.sw-lmd .cm-md-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05em;
+  height: 1.05em;
+  margin: 0 0.35em 0 0.05em;
+  vertical-align: -0.16em;
+  border-radius: 5px;
+  border: 1.5px solid var(--sw-border-strong);
+  cursor: pointer;
+  transition: background-color 0.14s, border-color 0.14s;
+}
+.sw-lmd .cm-md-check.is-on {
+  border-color: var(--sw-accent);
+  background: var(--sw-accent);
+}
+.sw-lmd .cm-md-check.is-on::after {
+  content: "";
+  width: 0.32em;
+  height: 0.58em;
+  margin-top: -0.12em;
+  border: solid var(--sw-accent-fg);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.sw-is-mobile .sw-lmd .cm-md-check { width: 1.2em; height: 1.2em; }
+
+/* Код блоком, таблица — моноширинным, на тихой подложке. */
+.sw-lmd .cm-md-codeblock {
+  font-family: var(--sw-font-mono);
+  font-size: 0.84em;
+  line-height: 1.55;
+  background: var(--sw-surface-0);
+  padding: 0 10px !important;
+}
+.sw-lmd .cm-md-fence { color: var(--sw-text-mute); font-size: 0.78em; }
+.sw-lmd .cm-md-table { font-family: var(--sw-font-mono); font-size: 0.84em; }
+.sw-lmd .cm-md-hr {
+  display: inline-block;
+  width: 100%;
+  height: 0;
+  vertical-align: middle;
+  border-top: 1px solid var(--sw-border-strong);
+}
+
+/* [[Ссылка на узел]] — плашкой; несуществующий узел — пунктиром. */
+.sw-lmd .cm-md-wiki {
+  color: var(--sw-accent);
+  background: color-mix(in srgb, var(--sw-accent) 13%, transparent);
+  border-radius: 6px;
+  padding: 0.06em 0.32em;
+  font-weight: 600;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.sw-lmd .cm-md-wiki.is-link { cursor: pointer; }
+.sw-lmd .cm-md-wiki.is-missing {
+  color: var(--sw-text-dim);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--sw-border-strong);
+}
+
+/* ---------------- подсказка [[узлов ---------------- */
+
+.cm-tooltip.cm-tooltip-autocomplete {
+  border: 1px solid var(--sw-border);
+  border-radius: 12px;
+  background: var(--sw-surface);
+  box-shadow: var(--sw-elev-3);
+  overflow: hidden;
+  padding: 4px;
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul { font-family: var(--sw-font) !important; max-height: 15rem !important; }
+.cm-tooltip.cm-tooltip-autocomplete > ul > li {
+  padding: 6px 10px !important;
+  border-radius: 8px;
+  color: var(--sw-text);
+  font-size: 13.5px;
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: color-mix(in srgb, var(--sw-accent) 18%, transparent);
+  color: var(--sw-text);
+}
+.sw-is-mobile .cm-tooltip.cm-tooltip-autocomplete > ul > li { padding: 11px 12px !important; font-size: 15.5px; }
+
+/* ---------------- телефон: кнопки над клавиатурой ---------------- */
+
+.sw-lmd-kbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px calc(8px + var(--sw-safe-right)) calc(6px + var(--sw-safe-bottom)) calc(6px + var(--sw-safe-left));
+  background: var(--sw-surface-2);
+  border-top: 1px solid var(--sw-border);
+  animation: swKbarIn 0.18s var(--sw-ease) both;
+}
+@keyframes swKbarIn {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+.sw-lmd-kbar-scroll {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  touch-action: pan-x;
+}
+.sw-lmd-kbar-scroll::-webkit-scrollbar { display: none; }
+.sw-lmd-kbtn {
+  flex: none;
+  width: 44px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  color: var(--sw-text);
+}
+.sw-lmd-kbtn:active { background: var(--sw-hover); }
+.sw-lmd-kdone {
+  flex: none;
+  width: 46px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+}
+.sw-lmd-kdone:active { transform: scale(0.94); }
+
+/* Поле описания в панели узла: тихая подложка, а не рамка поля ввода;
+   в работе — кольцо акцента. */
+.sw-desc-box {
+  border-radius: 12px;
+  border: 1px solid var(--sw-border);
+  background: color-mix(in srgb, var(--sw-bg) 55%, transparent);
+  padding: 10px 14px 6px;
+  transition: border-color 0.16s var(--sw-ease), box-shadow 0.16s var(--sw-ease);
+}
+.sw-desc-box:focus-within { border-color: color-mix(in srgb, var(--sw-accent) 60%, var(--sw-border)); box-shadow: var(--sw-ring); }
+.sw-is-mobile .sw-desc-box { padding: 12px 16px 8px; border-radius: 16px; }
+.sw-desc-box .sw-lmd-host { min-height: 7rem; }
+/* Подсказки CodeMirror живут в body — выше шторок и панели над клавиатурой. */
+body > .cm-tooltip, .cm-tooltip { z-index: 120 !important; }
+.sw-is-mobile .sw-lmd .cm-editor.cm-focused .cm-content { padding-bottom: 72px; }
