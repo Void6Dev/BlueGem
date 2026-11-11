@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TextField } from "@/components/ui/text-field";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -359,7 +360,7 @@ export default function Dashboard() {
           <div className="px-4 pb-3 flex items-center gap-2">
             <div className="sw-msearch flex-1 !m-0">
               <Search className="sw-msearch-icon" />
-              <input
+              <TextField
                 data-testid="project-search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}

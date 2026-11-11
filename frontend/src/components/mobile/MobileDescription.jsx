@@ -70,7 +70,6 @@ export default function MobileDescription({ value, onChange, nodes = [], onOpenN
 function Writer({ value, onChange, nodes, placeholder, onClose }) {
   const t = useT();
   const ta = useRef(null);
-  const [text, setText] = useState(value);
   const [query, setQuery] = useState(null); // текст после [[ или null
 
   // Курсор — в конец, клавиатура — сразу: лист открыли, чтобы писать.
@@ -110,7 +109,6 @@ function Writer({ value, onChange, nodes, placeholder, onClose }) {
   pushRef.current = push;
   useEffect(() => () => pushRef.current(), []);
   const emit = (next) => {
-    setText(next);
     pending.current = next;
     clearTimeout(timer.current);
     timer.current = setTimeout(() => pushRef.current(), 400);
@@ -233,7 +231,9 @@ function Writer({ value, onChange, nodes, placeholder, onClose }) {
         ref={ta}
         className="sw-writer-input"
         data-testid="desc-writer-input"
-        value={text}
+        // Поле целиком во власти клавиатуры: React его не перезаписывает ни
+        // на одной букве (см. lib/useImeSafe — почему это важно на Android).
+        defaultValue={value}
         placeholder={placeholder}
         onChange={(e) => { emit(e.target.value); sync(); }}
         onSelect={sync}

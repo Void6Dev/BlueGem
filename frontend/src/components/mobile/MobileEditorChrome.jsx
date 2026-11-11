@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { TextField } from "@/components/ui/text-field";
 import {
   ArrowLeft, CalendarRange, Check, ChevronDown, Layers, ListTree, MoreHorizontal, Pencil,
   Plus, Search, Settings, Share2, Shapes, Undo2, X,
@@ -175,7 +176,7 @@ export function CanvasSheet({
         <div className="sw-mlist">
           {canvases.map((c) => (editing?.id === c.id ? (
             <div key={c.id} className="sw-mrow" data-active="true">
-              <input
+              <TextField
                 ref={inputRef}
                 value={editing.label}
                 onChange={(e) => setEditing({ id: c.id, label: e.target.value })}
@@ -253,7 +254,7 @@ export function WorldSheet({ search, onSearch, hits, children, onClose }) {
       </div>
       <div className="sw-msearch">
         <Search className="sw-msearch-icon" />
-        <input
+        <TextField
           value={search}
           onChange={(e) => onSearch(e.target.value)}
           placeholder={t("editor.searchNodes")}

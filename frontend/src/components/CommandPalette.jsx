@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TextField } from "@/components/ui/text-field";
 import { motion } from "framer-motion";
 import { Search, CornerDownLeft } from "lucide-react";
 import { NodeIcon } from "@/components/NodeIcon";
@@ -76,7 +77,7 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
       >
         <div className="flex items-center gap-2 px-4 py-3 border-b sw-border-c">
           <Search className="w-4 h-4 sw-text-dim shrink-0" />
-          <input
+          <TextField
             ref={inputRef}
             data-testid="command-palette-input"
             value={q}

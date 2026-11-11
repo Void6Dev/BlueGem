@@ -34,6 +34,7 @@ import GradientEdge from "@/components/GradientEdge";
 import ContextMenu from "@/components/ContextMenu";
 import { formatRange, normalizeEras, resolveCalendar, useChronology } from "@/lib/chrono";
 import { NodeIcon } from "@/components/NodeIcon";
+import { TextField } from "@/components/ui/text-field";
 import Sheet from "@/components/mobile/Sheet";
 import {
   CanvasSheet, CreateSheet, MobileDock, MobileTopBar, WorldSheet,
@@ -2130,7 +2131,7 @@ function EditorInner() {
   const canvasTab = (c, testId) => {
     if (renamingCanvas?.id === c.id) {
       return (
-        <input
+        <TextField
           key={c.id}
           data-testid={`${testId}-rename`}
           autoFocus
@@ -2799,7 +2800,7 @@ function EditorInner() {
           <div className="px-5 pb-5">
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 sw-text-dim pointer-events-none" />
-              <input
+              <TextField
                 ref={searchRef}
                 data-testid="node-search"
                 value={search}
