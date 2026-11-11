@@ -44,6 +44,31 @@ jobs:
       - run: pip install -r server/api_tests/requirements.txt
       - run: python -m pytest -q server/api_tests
 
+  # Сервер едет в установщик для Windows — проверяем его и там: сборку,
+  # собственные тесты и API по HTTP.
+  server-windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      - run: cargo test --release --locked
+        working-directory: server
+      - run: cargo build --release --locked
+        working-directory: server
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r server/api_tests/requirements.txt
+      - run: python -m pytest -q server/api_tests
+
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
