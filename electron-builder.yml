@@ -37,6 +37,10 @@ win:
 linux:
   icon: build/icon.png
   executableName: bluegem
+  # Окно получает app_id/WM_CLASS «bluegem» — тот же, что у ярлыка
+  # bluegem.desktop: так док и панель задач узнают запущенное окно и
+  # показывают его с иконкой BlueGem, а не пустышкой.
+  syncDesktopName: true
   category: Office
   synopsis: Visual worldbuilding on an infinite canvas
   description: >-
@@ -69,7 +73,8 @@ fileAssociations:
     description: Проект BlueGem
     icon: build/file-icon.ico
     role: Editor
-    mimeType: application/x-bluegem-project
+    # Свой тип: два одинаковых <mime-type> в одной базе MIME — ошибка.
+    mimeType: application/x-bluegem-project-legacy
 
 nsis:
   oneClick: false
