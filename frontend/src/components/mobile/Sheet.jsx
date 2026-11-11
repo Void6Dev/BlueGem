@@ -113,15 +113,22 @@ export default function Sheet({
   // «Назад» на телефоне и Esc на клавиатуре — тот же выход, что и свайп.
   const backRef = useRef(null);
   backRef.current = onBack || close;
-  useEffect(() => pushBack(() => backRef.current()), []);
+  const layer = useRef(null);
+  useEffect(() => {
+    layer.current = pushBack(() => backRef.current());
+    return layer.current;
+  }, []);
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
+      // Esc закрывает только верхний слой — как системная «назад».
+      if (!layer.current?.isTop()) return;
       e.preventDefault();
       backRef.current();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // На перехвате: шторка решает раньше, чем общие обработчики редактора.
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, []);
 
   /** Сдвиг шторки пальцем — прямо в DOM, без перерисовки содержимого. */

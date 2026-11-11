@@ -782,6 +782,11 @@ const en = {
     yourWorlds: "Your worlds",
     linkHint: "Tap a node to link it with “{name}”",
     done: "Done",
+    details: "More: type, dates, page, image, fields",
+    writeHere: "Tap to write…",
+    all: "All",
+    canvas: "Canvas",
+    open: "Open",
     longPressHint: "Press and hold a card for its menu",
   },
 };

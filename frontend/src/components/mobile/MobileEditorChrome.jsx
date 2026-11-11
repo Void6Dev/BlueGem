@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { TextField } from "@/components/ui/text-field";
 import {
   ArrowLeft, CalendarRange, Check, ChevronDown, Layers, ListTree, MoreHorizontal, Pencil,
-  Plus, Search, Settings, Share2, Shapes, Undo2, X,
+  Plus, Search, Settings, Share2, Shapes, X,
 } from "lucide-react";
 import Sheet, { useSheet } from "@/components/mobile/Sheet";
 import { NodeIcon } from "@/components/NodeIcon";
@@ -46,35 +46,23 @@ export function MobileTopBar({
   );
 }
 
-export function MobileDock({
-  hidden, view, onWorld, onTimeline, onCreate, onUndo, canUndo, onMore, nodeCount,
-}) {
+export function MobileDock({ hidden, view, onWorld, onCanvas, onTimeline, onCreate, onMore }) {
   const t = useT();
   const tap = (fn, kind = "tick") => () => { haptic(kind); fn(); };
+  const tab = (id, Icon, label, fn) => (
+    <button type="button" className="sw-mdock-btn" data-active={view === id} onClick={tap(fn)} data-testid={`dock-${id}`}>
+      <Icon />
+      <span>{label}</span>
+    </button>
+  );
   return (
     <nav className={`sw-mdock sw-glass ${hidden ? "is-hidden" : ""}`} data-testid="mobile-dock">
-      <button type="button" className="sw-mdock-btn" onClick={tap(onWorld)} data-testid="dock-world">
-        <ListTree />
-        <span>{t("mobile.world")}</span>
-        {nodeCount > 0 && <span className="sw-mdock-badge">{nodeCount > 99 ? "99+" : nodeCount}</span>}
-      </button>
-      <button
-        type="button"
-        className="sw-mdock-btn"
-        data-active={view === "timeline"}
-        onClick={tap(onTimeline)}
-        data-testid="dock-timeline"
-      >
-        {view === "timeline" ? <Share2 /> : <CalendarRange />}
-        <span>{view === "timeline" ? t("editor.viewCanvas") : t("mobile.time")}</span>
-      </button>
+      {tab("world", ListTree, t("mobile.world"), onWorld)}
+      {tab("canvas", Share2, t("mobile.canvas"), onCanvas)}
       <button type="button" className="sw-mdock-add" onClick={tap(onCreate, "medium")} data-testid="dock-create" aria-label={t("editor.create")}>
         <Plus />
       </button>
-      <button type="button" className="sw-mdock-btn" onClick={tap(onUndo)} disabled={!canUndo} data-testid="dock-undo">
-        <Undo2 />
-        <span>{t("mobile.undo")}</span>
-      </button>
+      {tab("timeline", CalendarRange, t("mobile.time"), onTimeline)}
       <button type="button" className="sw-mdock-btn" onClick={tap(onMore)} data-testid="dock-more">
         <MoreHorizontal />
         <span>{t("mobile.more")}</span>

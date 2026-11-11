@@ -948,3 +948,242 @@
 .sw-writer-bar .sw-lmd-kbtn:active { background: var(--sw-hover); }
 .sw-mdesc .sw-md { font-size: 15.5px; line-height: 1.6; }
 .sw-mdesc .sw-md h1, .sw-mdesc .sw-md h2, .sw-mdesc .sw-md h3 { font-family: var(--sw-font-display); }
+
+/* =====================================================================
+   Узел — страница (телефон).
+   Сверху «назад», тип и «⋯»; крупное название; сразу текст; потом связи и
+   теги. Тип, даты, страница, картинка и поля — под «Подробнее».
+   ===================================================================== */
+
+.sw-npage-head { flex: none; padding: 0 16px 4px 8px; }
+.sw-npage-bar { display: flex; align-items: center; gap: 4px; height: 48px; }
+.sw-npage-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 62vw;
+  height: 36px;
+  padding: 0 12px 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--node-tone) 16%, var(--sw-surface-2));
+  color: var(--sw-text);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.sw-npage-type:active { transform: scale(0.96); }
+.sw-npage-type .sw-node-badge-icon { width: 24px; height: 24px; border-radius: 999px; }
+.sw-npage-title {
+  font-family: var(--sw-font-display) !important;
+  font-size: 27px !important;
+  font-weight: 700;
+  line-height: 1.22 !important;
+  letter-spacing: -0.02em;
+  padding: 4px 8px 6px 12px !important;
+  min-height: 0 !important;
+  color: var(--sw-text);
+  box-shadow: none !important;
+}
+
+.sw-npage-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 6px 20px 48px;
+}
+.sw-npage-body > .sw-sec-desc { order: 1; padding-left: 0 !important; }
+.sw-npage-body > .sw-sec-links { order: 2; }
+.sw-npage-body > .sw-sec-tags { order: 3; }
+.sw-npage-body > .sw-npage-more { order: 4; }
+.sw-npage-body > .sw-sec-type { order: 5; }
+.sw-npage-body > .sw-sec-dates { order: 6; }
+.sw-npage-body > .sw-sec-canvas { order: 7; }
+.sw-npage-body > .sw-sec-image { order: 8; }
+.sw-npage-body > .sw-sec-fields { order: 9; }
+.sw-npage-body:not(.is-details) > .sw-sec-type,
+.sw-npage-body:not(.is-details) > .sw-sec-dates,
+.sw-npage-body:not(.is-details) > .sw-sec-canvas,
+.sw-npage-body:not(.is-details) > .sw-sec-image,
+.sw-npage-body:not(.is-details) > .sw-sec-fields { display: none; }
+.sw-npage-body label { font-size: 12px !important; letter-spacing: 0.12em !important; }
+.sw-npage-body .sw-sec-links button,
+.sw-npage-body .sw-sec-links a { min-height: 40px; }
+.sw-npage-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 14px;
+  background: var(--sw-surface-2);
+  color: var(--sw-text-dim);
+  font-size: 14px;
+  text-align: left;
+}
+.sw-npage-more svg { flex: none; transition: transform 0.2s var(--sw-ease); }
+.sw-npage-body.is-details > .sw-npage-more svg { transform: rotate(180deg); }
+/* Пока пишут, снизу запас: строка с курсором не уходит под кнопки. */
+.sw-writing .sw-npage-body { padding-bottom: 45vh; }
+
+/* Текст узла: собранный — как документ, без рамки; в правке — то же место. */
+.sw-npage-body .sw-mdesc {
+  border: 0;
+  background: transparent;
+  padding: 2px 0;
+  min-height: 72px;
+  border-radius: 0;
+}
+.sw-npage-body .sw-mdesc:active { background: transparent; opacity: 0.85; }
+.sw-npage-body .sw-mdesc .sw-md { font-size: 17px; line-height: 1.65; }
+.sw-npage-body .sw-mdesc-empty { font-size: 17px; }
+.sw-mdesc-input {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  padding: 2px 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: var(--sw-text);
+  font-family: var(--sw-font);
+  font-size: 17px !important;
+  line-height: 1.65;
+  caret-color: var(--sw-accent);
+}
+.sw-mdesc-input::placeholder { color: var(--sw-text-mute); }
+
+/* Кнопки над клавиатурой. */
+.sw-kbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 95;
+  background: var(--sw-surface-2);
+  border-top: 1px solid var(--sw-border);
+}
+.sw-kbar .sw-writer-nodes { border-top: 0; border-bottom: 1px solid var(--sw-border); background: var(--sw-surface); }
+.sw-kbar-row { display: flex; align-items: center; gap: 4px; padding: 6px 8px; }
+.sw-kbar-tools { flex: 1; min-width: 0; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; touch-action: pan-x; }
+.sw-kbar-tools::-webkit-scrollbar { display: none; }
+.sw-kbtn {
+  flex: none;
+  width: 46px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: var(--sw-text);
+}
+.sw-kbtn:active { background: var(--sw-hover); }
+.sw-kdone {
+  flex: none;
+  width: 48px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+}
+
+/* =====================================================================
+   Мир списком — главный экран проекта на телефоне.
+   ===================================================================== */
+
+.sw-world {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--sw-bg);
+}
+.sw-world-top { flex: none; padding: 12px 16px 6px; display: flex; flex-direction: column; gap: 10px; }
+.sw-world-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px 4px; }
+.sw-world-chips::-webkit-scrollbar { display: none; }
+.sw-world-chips button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--sw-surface-2);
+  color: var(--sw-text-dim);
+  font-size: 14px;
+  font-weight: 600;
+}
+.sw-world-chips button[data-active="true"] { background: var(--sw-text); color: var(--sw-bg); }
+.sw-world-chips button i { width: 8px; height: 8px; border-radius: 99px; background: var(--node-color); }
+.sw-world-chips button span { font-family: var(--sw-font-mono); font-size: 11.5px; opacity: 0.7; font-weight: 500; }
+.sw-world-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 8px calc(var(--sw-mdock-h) + 40px + var(--sw-safe-bottom));
+}
+.sw-world-group { margin-bottom: 10px; }
+.sw-world-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 12px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sw-text-dim);
+}
+.sw-world-head i { width: 8px; height: 8px; border-radius: 99px; background: var(--node-color); }
+.sw-world-head span { margin-left: auto; font-family: var(--sw-font-mono); letter-spacing: 0; font-weight: 500; color: var(--sw-text-mute); }
+.sw-world-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 12px;
+  border-radius: 16px;
+  text-align: left;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 64px;
+}
+.sw-world-row:active { background: var(--sw-hover); }
+.sw-world-icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sw-world-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sw-world-title { font-size: 16.5px; font-weight: 600; color: var(--sw-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-world-sub { font-size: 13.5px; color: var(--sw-text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-world-deg { flex: none; display: inline-flex; align-items: center; gap: 4px; font-family: var(--sw-font-mono); font-size: 12px; color: var(--sw-text-mute); }
+.sw-world-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 18vh 24px 0; }
+.sw-world-add {
+  margin-top: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 50px;
+  padding: 0 24px;
+  border-radius: 16px;
+  background: var(--sw-accent);
+  color: var(--sw-accent-fg);
+  font-size: 16px;
+  font-weight: 700;
+}
+.sw-mdesc-input:focus,
+.sw-mdesc-input:focus-visible { outline: none !important; box-shadow: none !important; border: 0 !important; }

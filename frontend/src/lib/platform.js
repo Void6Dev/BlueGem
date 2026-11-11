@@ -86,10 +86,13 @@ let fallbackBack = null;
 export function pushBack(handler) {
   const entry = { handler };
   backStack.push(entry);
-  return () => {
+  const remove = () => {
     const i = backStack.indexOf(entry);
     if (i !== -1) backStack.splice(i, 1);
   };
+  // Верхний ли это слой — Esc на клавиатуре должен закрывать только его.
+  remove.isTop = () => backStack[backStack.length - 1] === entry;
+  return remove;
 }
 
 /** То же для компонента: пока active, «назад» зовёт handler. */

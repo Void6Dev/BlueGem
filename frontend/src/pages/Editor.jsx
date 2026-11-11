@@ -37,8 +37,9 @@ import { NodeIcon } from "@/components/NodeIcon";
 import { TextField } from "@/components/ui/text-field";
 import Sheet from "@/components/mobile/Sheet";
 import {
-  CanvasSheet, CreateSheet, MobileDock, MobileTopBar, WorldSheet,
+  CanvasSheet, CreateSheet, MobileDock, MobileTopBar,
 } from "@/components/mobile/MobileEditorChrome";
+import MobileWorld from "@/components/mobile/MobileWorld";
 import { haptic, isMobileNow, useBackHandler, useIsMobile } from "@/lib/platform";
 import { useLongPress } from "@/lib/useLongPress";
 
@@ -404,7 +405,12 @@ function EditorInner() {
   const [renamingCanvas, setRenamingCanvas] = useState(null); // { id, label } вкладки на правке
   // Телефон: своя рама вокруг холста и шторки вместо боковых панелей.
   const mobile = useIsMobile();
-  const [mSheet, setMSheet] = useState(null); // "create" | "canvases" | "world" | null
+  const [mSheet, setMSheet] = useState(null); // "create" | "canvases" | null
+  // Телефон: главный экран проекта — мир списком; холст — вторая вкладка.
+  const [mView, setMView] = useState("world"); // "world" | "canvas"
+  // Узлы, через которые пришли по связям: «назад» на странице узла ведёт к
+  // предыдущему, а не сразу к миру.
+  const trailRef = useRef([]);
   // Длина истории — состоянием: кнопка «Отменить» на телефоне должна гаснуть,
   // когда отменять нечего, а ref об этом никому не сообщает.
   const [undoCount, setUndoCount] = useState(0);
@@ -606,9 +612,12 @@ function EditorInner() {
     requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(run)));
   }, [rf, mobile]);
 
-  const openNodeById = useCallback((nodeId) => {
+  const panelRef = useRef({ open: false, id: null });
+  const openNodeById = useCallback((nodeId, opts = {}) => {
     const found = rf.getNode(nodeId);
     if (!found) return;
+    const cur = panelRef.current;
+    if (mobile && !opts.back && cur.open && cur.id && cur.id !== nodeId) trailRef.current.push(cur.id);
     // Jumping to a node on another canvas should switch canvases too.
     const canvasOf = found.data.canvas || mainCanvasId;
     if (canvasOf !== activeCanvas) setCurrentCanvas(canvasOf);
@@ -621,7 +630,7 @@ function EditorInner() {
     setPanelOpen(true);
     setPreviewId(null);
     focusNode(nodeId);
-  }, [rf, focusNode, activeCanvas, mainCanvasId]);
+  }, [rf, focusNode, activeCanvas, mainCanvasId, mobile]);
 
   /**
    * Перевести быстрый просмотр на другой узел — по связи или [[ссылке]] из
@@ -669,6 +678,8 @@ function EditorInner() {
   // Панель закрыли — подсказка «к какому полю подъехать» больше ни к чему.
   // Иначе она срабатывала при следующем открытии любого узла.
   useEffect(() => { if (!panelOpen) setFocusField(null); }, [panelOpen]);
+  panelRef.current = { open: panelOpen && !!selectedNode, id: selectedNode?.id || null };
+  useEffect(() => { if (!panelOpen) trailRef.current = []; }, [panelOpen]);
 
   /**
    * Правка из панели попадает на холст сразу, в том же кадре: на сервер она
@@ -1232,6 +1243,13 @@ function EditorInner() {
     // этого не стоит отдавать треть экрана редактору. Раньше клик разворачивал
     // саму карточку, и она ложилась поверх соседей; разворот на холсте
     // остался в меню узла.
+    // Телефон: одно касание — страница узла. Без промежуточного превью:
+    // заглянуть и написать — одно и то же действие.
+    if (mobile) {
+      haptic("light");
+      openNodeById(node.id);
+      return;
+    }
     setPreviewId((cur) => (cur === node.id ? null : node.id));
     setPanelOpen(false);
     // Телефон: превью выезжает снизу и закрыло бы сам узел — если он в нижней
@@ -1248,7 +1266,7 @@ function EditorInner() {
           { zoom, duration: 300 });
       }
     }
-  }, [linkSource, connectNodes, mobile, rf]);
+  }, [linkSource, connectNodes, mobile, rf, openNodeById]);
 
   const onNodeDoubleClick = useCallback((_, node) => {
     setPreviewId(null);
@@ -2226,6 +2244,23 @@ function EditorInner() {
     ];
   }, [settings, setNodeCardMode, tr]);
 
+  /**
+   * Телефон: в меню — только то, что там правда нужно. С компьютера пришли
+   * пункты вроде «Вернуть ширину» и «Развернуть карточку» — на телефоне они
+   * ничего не значат и только удлиняли список до четырнадцати строк.
+   */
+  const forPhone = useCallback((items, keep) => {
+    if (!mobile) return items;
+    const out = [];
+    for (const it of items) {
+      if (it.separator) {
+        if (out.length && !out[out.length - 1].separator) out.push(it);
+      } else if (keep.includes(it.id)) out.push(it);
+    }
+    while (out.length && out[out.length - 1].separator) out.pop();
+    return out;
+  }, [mobile]);
+
   // Что сейчас развёрнуто — читаем из ref, а не из зависимостей. Иначе
   // обработчик меню менялся на каждый разворот карточки, а вместе с ним
   // пересобирался список узлов в панели: тысяча строк на один щелчок.
@@ -2241,8 +2276,8 @@ function EditorInner() {
       y: e.clientY,
       header: node.data.title || tr("common.untitled"),
       headerColor: node.data.nodeType?.color,
-      items: [
-        { id: "open", label: tr("ctx.openInEditor"), icon: Pencil, onSelect: () => openNodeById(node.id) },
+      items: forPhone([
+        { id: "open", label: tr(mobile ? "mobile.open" : "ctx.openInEditor"), icon: Pencil, onSelect: () => openNodeById(node.id) },
         { id: "peek", label: tr("ctx.preview"), icon: Eye, onSelect: () => peekNode(node.id) },
         {
           id: "expand",
@@ -2299,11 +2334,11 @@ function EditorInner() {
           : []),
         { id: "sep-del", separator: true },
         { id: "del", label: tr("ctx.deleteNode"), icon: Trash2, danger: true, onSelect: () => deleteNode(node.id) },
-      ],
+      ], ["open", "node-type", "link-new", "dup", "move-canvas", "del"]),
     });
   }, [rfEdges, nodeTitles, typeItems, canvasItems, cardModeItems, canvases.length, settings, changeNodeType,
       openNodeById, addConnectedNode, deleteSelectedEdge, unlinkAll, duplicateNode, focusNode, deleteNode,
-      resizeNode, peekNode]);
+      resizeNode, peekNode, forPhone]);
 
   // Список в панели знает про узел только его id — сам узел спрашиваем здесь.
   // Так список не зависит от объектов React Flow и переживает перенос карточек
@@ -2323,7 +2358,7 @@ function EditorInner() {
       y: e.clientY,
       header: `${nodeTitles[edge.source] || "?"} → ${nodeTitles[edge.target] || "?"}`,
       headerColor: edge.data?.color || DEFAULT_EDGE_COLOR,
-      items: [
+      items: forPhone([
         { id: "edit-edge", label: tr("ctx.editEdge"), icon: Pencil, onSelect: () => { closeAll(); setSelectedEdge(edge); } },
         {
           id: "rel-type",
@@ -2381,10 +2416,10 @@ function EditorInner() {
         { id: "goto-target", label: tr("ctx.goTo", { name: nodeTitles[edge.target] || tr("ctx.node") }), icon: Target, onSelect: () => openNodeById(edge.target) },
         { id: "sep-edge-del", separator: true },
         { id: "del-edge", label: tr("ctx.deleteEdge"), icon: Trash2, danger: true, onSelect: () => deleteSelectedEdge(edge.id) },
-      ],
+      ], ["rel-type", "swap", "goto-source", "goto-target", "del-edge"]),
     });
   }, [nodeTitles, closeAll, quickSetRelType, swapEdgeDirection, openNodeById, deleteSelectedEdge,
-      rf, settings, relTypes, addEdgePoint, straightenEdge, setEdgeShape]);
+      rf, settings, relTypes, addEdgePoint, straightenEdge, setEdgeShape, forPhone]);
 
   const openPaneMenu = useCallback((e) => {
     e.preventDefault();
@@ -2393,7 +2428,7 @@ function EditorInner() {
     setMenu({
       x: e.clientX,
       y: e.clientY,
-      items: [
+      items: forPhone([
         {
           id: "new-here",
           label: tr("ctx.createHere"),
@@ -2436,10 +2471,10 @@ function EditorInner() {
         { id: "sep-pane3", separator: true },
         { id: "palette", label: tr("ctx.commandPalette"), icon: Command, hint: "Ctrl K", onSelect: () => setShowPalette(true) },
         { id: "settings", label: tr("ctx.settings"), icon: Settings, onSelect: () => { closeAll(); setShowSettings(true); } },
-      ],
+      ], ["new-here", "paste", "layout", "fit"]),
     });
   }, [rf, typeItems, addNode, runLayout, selectAllVisible, closeAll, createNodeType,
-      pasteNodes, undo, addCanvas, settings, changeSettings, mobile]);
+      pasteNodes, undo, addCanvas, settings, changeSettings, mobile, forPhone]);
 
   const openSelectionMenu = useCallback((e, nodes) => {
     e.preventDefault();
@@ -2568,6 +2603,8 @@ function EditorInner() {
         return;
       }
       if (e.key === "Escape") {
+        // Esc уже закрыл верхнюю шторку — остальное не трогаем.
+        if (e.defaultPrevented) return;
         if (showPalette || showShortcuts) { setShowPalette(false); setShowShortcuts(false); return; }
         closeAll();
         return;
@@ -2691,7 +2728,11 @@ function EditorInner() {
   // «Ещё» на телефоне: то же, что «⋯» и меню холста на компьютере, без
   // клавиатурного и без мини-карты — на экране телефона ей нет места.
   const cardModeNow = settings?.cardMode || "detailed";
-  const mobileMoreItems = [
+  const canvasOnly = new Set(["m-fit", "m-layout", "m-focus", "m-cards", "m-select", "m-paste"]);
+  const mobileMoreItemsAll = [
+    { id: "m-undo", label: tr("palette.undo"), icon: Undo2, disabled: undoCount === 0, onSelect: undo },
+    { id: "m-pages", label: tr("mobile.pages"), icon: Layers, onSelect: () => setMSheet("canvases") },
+    { id: "sep-m0", separator: true },
     { id: "m-fit", label: tr("editor.fitView"), icon: Maximize2, onSelect: () => rf.fitView({ padding: 0.15, duration: 400 }) },
     {
       id: "m-layout",
@@ -2731,6 +2772,7 @@ function EditorInner() {
     },
     { id: "m-settings", label: tr("ctx.settings"), icon: Settings, onSelect: () => { closeAll(); setShowSettings(true); } },
   ];
+  const mobileMoreItems = mobileMoreItemsAll.filter((it) => mView === "canvas" || !canvasOnly.has(it.id));
 
   /** Переименование страницы из шторки «Страницы». Пустое имя — отказ. */
   const renameCanvas = (cid, value) => {
@@ -2753,7 +2795,10 @@ function EditorInner() {
       {mobile ? (
         <MobileTopBar
           projectName={project.name}
-          canvasLabel={canvases.find((c) => c.id === activeCanvas)?.label || ""}
+          // На экране «Мир» страница холста ни о чём не говорит — там число узлов.
+          canvasLabel={mView === "canvas" || showTimeline
+            ? canvases.find((c) => c.id === activeCanvas)?.label || ""
+            : tr("count.nodes", { count: rfNodes.length })}
           onBack={() => navigate("/")}
           onCanvases={() => { haptic("tick"); setMSheet("canvases"); }}
           onSearch={() => setShowPalette(true)}
@@ -3260,20 +3305,30 @@ function EditorInner() {
           </Suspense>
         )}
 
+        {/* Мир списком поверх холста: холст под ним остаётся смонтированным, и
+            переход на вкладку «Холст» стоит одного кадра, а не пересборки. */}
+        {mobile && mView === "world" && !showTimeline && (
+          <MobileWorld
+            nodes={nodeContent}
+            types={settings.nodeTypes || []}
+            degrees={degrees}
+            canvases={canvases}
+            mainCanvasId={mainCanvasId}
+            onOpen={(nid) => openNodeById(nid)}
+            onContextMenu={openNodeMenuById}
+            onCreate={() => setMSheet("create")}
+          />
+        )}
+
         {mobile && (
           <MobileDock
             hidden={!!previewId}
-            view={showTimeline ? "timeline" : "canvas"}
-            onWorld={() => setMSheet("world")}
-            onTimeline={() => {
-              if (showTimeline) setShowTimeline(false);
-              else { closeAll(); setShowTimeline(true); }
-            }}
+            view={showTimeline ? "timeline" : mView}
+            onWorld={() => { setShowTimeline(false); setMView("world"); }}
+            onCanvas={() => { setShowTimeline(false); setMView("canvas"); }}
+            onTimeline={() => { closeAll(); setShowTimeline(true); }}
             onCreate={() => setMSheet("create")}
-            onUndo={undo}
-            canUndo={undoCount > 0}
             onMore={() => setMenu({ x: 0, y: 0, header: project.name, items: mobileMoreItems })}
-            nodeCount={rfNodes.length}
           />
         )}
       </div>
@@ -3312,6 +3367,28 @@ function EditorInner() {
             onLink={(targetId) => connectNodes(selectedNode.id, targetId)
               .then((e) => e && toast.success(tr("editor.toasts.edgeCreated")))}
             onUnlink={deleteSelectedEdge}
+            onBack={mobile ? () => {
+              const prev = trailRef.current.pop();
+              if (prev && rf.getNode(prev)) openNodeById(prev, { back: true });
+              else { setPanelOpen(false); setSelectedNode(null); }
+            } : undefined}
+            onTypeMenu={(nodeId) => {
+              const n = rf.getNode(nodeId);
+              if (!n) return;
+              const cur = `pg-type-${n.data.typeId || "note"}`;
+              setMenu({
+                x: 0, y: 0, header: tr("ctx.changeType"),
+                items: typeItems((typeId) => changeNodeType(n, typeId), "pg-type")
+                  .map((it) => ({ ...it, checked: it.id === cur })),
+              });
+            }}
+            onMore={(nodeId) => {
+              const n = rf.getNode(nodeId);
+              if (!n) return;
+              openNodeMenu({ preventDefault() {}, clientX: 0, clientY: 0 }, n);
+              // Узел и так открыт — «Открыть» здесь лишнее.
+              setMenu((m) => (m ? { ...m, items: m.items.filter((it) => it.id !== "open") } : m));
+            }}
           />
         )}
         {selectedEdge && (
@@ -3375,39 +3452,6 @@ function EditorInner() {
           onAdd={addCanvas}
           onClose={() => { setMSheet(null); setRenamingCanvas(null); }}
         />
-      )}
-      {mobile && mSheet === "world" && (
-        <WorldSheet
-          search={search}
-          onSearch={setSearch}
-          hits={tr("editor.found", { count: filtered.length, total: visibleIds.size })}
-          onClose={() => setMSheet(null)}
-        >
-          <WorldTree
-            groups={groupedList}
-            filtering={!!q || activeTags.size > 0}
-            degrees={degrees}
-            activeId={selectedNode?.id || null}
-            collapsed={sidebar.collapsed || EMPTY_OBJECT}
-            dragType={null}
-            awayOf={treeAwayOf}
-            scope={sidebar.scope || "canvas"}
-            onScope={(scope) => setSidebar((sb) => ({ ...sb, scope }))}
-            allTags={allTags}
-            activeTags={activeTags}
-            onToggleTag={toggleTag}
-            onResetTags={() => setActiveTags(new Set())}
-            onToggleGroup={toggleTreeGroup}
-            onCreate={(typeId) => { setMSheet(null); mobileCreate(typeId); }}
-            onCreateType={() => { setMSheet(null); createNodeType(); }}
-            onDragStart={(e) => e.preventDefault()}
-            onDragEnd={() => {}}
-            onGroupMenu={openTypeMenu}
-            // Касание по узлу в списке — к узлу на холсте, с быстрым просмотром.
-            onOpen={(nid) => { setMSheet(null); setShowTimeline(false); peekNode(nid); }}
-            onContextMenu={openNodeMenuById}
-          />
-        </WorldSheet>
       )}
       <ContextMenu menu={menu} onClose={() => setMenu(null)} />
     </div>

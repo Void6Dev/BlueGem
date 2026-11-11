@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import DockShell from "@/components/mobile/DockShell";
 import {
   X, Plus, Trash2, Copy, ImagePlus, Check, Loader2,
-  ArrowRight, ArrowLeft, Link2, ChevronDown, Maximize2, Minimize2,
+  ArrowRight, ArrowLeft, Link2, ChevronDown, Maximize2, Minimize2, MoreHorizontal,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { AutoTextarea } from "@/components/ui/auto-textarea";
@@ -58,6 +58,8 @@ export default function NodeEditorPanel({
   node, nodeTypes, onClose, onSave, onDelete, onDuplicate, onLiveChange, focusField,
   allNodes = [], allTags = [], connections = [], onOpenNode, onCreateNode, canvases = [],
   calendar, eras = [], fieldTemplates: projectFields, onChangeType, onLink, onUnlink,
+  // Телефон: узел — страница. «Назад» (к прошлому узлу или к миру), меню типа и «⋯».
+  onBack, onTypeMenu, onMore,
 }) {
   const tr = useT();
   const [draft, setDraft] = useState(null);
@@ -73,6 +75,7 @@ export default function NodeEditorPanel({
   const fileRef = useRef(null);
   const descRef = useRef(null);
   const mobile = useIsMobile();
+  const [details, setDetails] = useState(false);
   const liveTimer = useRef(0);
   const livePending = useRef({});
   // Закрыли панель, не дождавшись паузы, — отдать холсту последнее.
@@ -364,6 +367,41 @@ export default function NodeEditorPanel({
       {/* Шапка панели повторяет шапку карточки: значок и название типа, а имя
           узла — крупной строкой под ними. Раньше здесь стояло имя мелким
           полужирным, и оно же дублировалось полем «Название» ниже. */}
+      {mobile ? (
+        // Телефон: узел — страница. Сверху «назад», тип (касание — сменить) и
+        // «⋯»; ниже крупное название — сразу в поле, без режима правки.
+        <div className="sw-npage-head sw-typed" style={{ "--node-color": activeType?.color || "#64748b" }}>
+          <div data-sheet-drag="" className="sw-npage-bar">
+            <button type="button" className="sw-icon-btn" onClick={onBack || onClose} data-testid="close-editor-btn" aria-label={tr("node.close")}>
+              <ArrowLeft className="w-[22px] h-[22px]" />
+            </button>
+            <button
+              type="button"
+              className="sw-npage-type"
+              data-testid="node-type-chip"
+              onClick={() => onTypeMenu?.(draft.id)}
+            >
+              <span className="sw-node-badge-icon"><NodeIcon name={activeType?.icon} className="text-white" /></span>
+              <span className="truncate">{activeType?.label || tr("node.noType")}</span>
+              <ChevronDown className="w-3.5 h-3.5 opacity-60 shrink-0" />
+            </button>
+            <span className="flex-1" />
+            <button type="button" className="sw-icon-btn" onClick={() => onMore?.(draft.id)} data-testid="node-more-btn" aria-label={tr("editor.more")}>
+              <MoreHorizontal className="w-[22px] h-[22px]" />
+            </button>
+          </div>
+          <AutoTextarea
+            ref={titleRef}
+            data-testid="node-title-input"
+            value={draft.title}
+            singleLine
+            maxRows={4}
+            placeholder={tr("common.untitled")}
+            onChange={(e) => set({ title: e.target.value })}
+            className="sw-npage-title bg-transparent border-0 px-0"
+          />
+        </div>
+      ) : (
       <div
         className="sw-typed px-6 pt-4 pb-3 border-b sw-border-c"
         style={{ "--node-color": activeType?.color || "#64748b" }}
@@ -391,15 +429,30 @@ export default function NodeEditorPanel({
           />
         </div>
       </div>
+      )}
 
       {/* layoutScroll: ползунок поля живёт внутри прокрутки, и без этой подсказки
           framer меряет его позицию от несдвинутого контейнера — на прокрученной
           панели он уезжал мимо поля. */}
-      <motion.div layoutScroll ref={scrollRef} className="flex-1 sw-scroll-y px-6 py-6 space-y-6">
+      <motion.div
+        layoutScroll
+        ref={scrollRef}
+        className={mobile
+          ? `flex-1 sw-scroll-y sw-npage-body ${details ? "is-details" : ""}`
+          : "flex-1 sw-scroll-y px-6 py-6 space-y-6"}
+      >
+        {/* Телефон: тип, даты, страница, картинка и характеристики — под
+            «Подробнее». На странице узла первым делом текст и связи. */}
+        {mobile && (
+          <button type="button" className="sw-npage-more" onClick={() => setDetails((v) => !v)} data-testid="node-details-toggle">
+            <span>{tr("mobile.details")}</span>
+            <ChevronDown className="w-4 h-4" />
+          </button>
+        )}
         {/* Тип выбирается здесь же. Раньше поле только выглядело выбором, а
             под ним стояла подсказка идти на холст и искать пункт в меню узла —
             поле, которое нельзя нажать, хуже, чем поле, которого нет. */}
-        <div>
+        <div className="sw-sec sw-sec-type">
           <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("common.type")}</label>
           <button
             type="button"
@@ -442,7 +495,7 @@ export default function NodeEditorPanel({
         </div>
 
         {/* Даты узла — их может быть несколько — и холст, на котором он лежит. */}
-        <div>
+        <div className="sw-sec sw-sec-dates">
           <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.date")}</label>
           <div className="mt-2">
             <DateField
@@ -457,7 +510,7 @@ export default function NodeEditorPanel({
         </div>
 
         {canvases.length > 1 && (
-          <div>
+          <div className="sw-sec sw-sec-canvas">
             <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.canvas")}</label>
             <select
               data-testid="node-canvas-select"
@@ -472,8 +525,9 @@ export default function NodeEditorPanel({
           </div>
         )}
 
-        <div className="relative pl-3" data-testid="field-description">
+        <div className="sw-sec sw-sec-desc relative pl-3" data-testid="field-description">
           <FieldRail show={activeField === "description"} />
+          {!mobile && (
           <div className="flex items-center justify-between gap-2">
             <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("common.description")}</label>
             {/* Блокнот на весь экран — на телефоне не нужен: там писать и так открывают во весь экран. */}
@@ -488,6 +542,7 @@ export default function NodeEditorPanel({
             </button>
             )}
           </div>
+          )}
           {descFull ? (
             // Текст уехал в блокнот. На его месте заглушка, а не второй
             // редактор: два экземпляра на один и тот же текст сбивали бы
@@ -501,7 +556,7 @@ export default function NodeEditorPanel({
               {tr("node.openedFull")}
             </button>
           ) : mobile ? (
-            <div className="mt-2">
+            <div>
               <MobileDescription
                 key={nodeId}
                 {...descEditorProps}
@@ -526,16 +581,18 @@ export default function NodeEditorPanel({
               </Suspense>
             </div>
           )}
+          {!mobile && (
           <p className="mt-1.5 text-[11px] sw-text-dim flex items-center justify-between gap-2">
             <span>{tr("node.markdownHint", { code: `[[${tr("edge.node")}]]` })}</span>
             <span className="font-mono-sw shrink-0">{(draft.description || "").length}</span>
           </p>
+          )}
         </div>
 
         {/* Связи. Завести и убрать связь можно отсюда же: раньше список был
             только для чтения, а связь тянули мышью от точки на карточке —
             к узлу за краем экрана или на другом холсте её было не провести. */}
-        <div>
+        <div className="sw-sec sw-sec-links">
           <div className="flex items-center justify-between gap-2">
             <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim flex items-center gap-2">
               <Link2 className="w-3 h-3" /> {tr("node.links")} {connections.length > 0 && `(${connections.length})`}
@@ -625,7 +682,7 @@ export default function NodeEditorPanel({
         </div>
 
         {/* Image */}
-        <div>
+        <div className="sw-sec sw-sec-image">
           <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.image")}</label>
           {draft.image ? (
             <div className="mt-2 relative">
@@ -662,7 +719,7 @@ export default function NodeEditorPanel({
         </div>
 
         {/* Tags */}
-        <div>
+        <div className="sw-sec sw-sec-tags">
           <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.tagsLabel")}</label>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {draft.tags.map((t) => (
@@ -710,7 +767,7 @@ export default function NodeEditorPanel({
         </div>
 
         {/* Custom fields */}
-        <div>
+        <div className="sw-sec sw-sec-fields">
           <div className="flex items-center justify-between mb-3">
             <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.customFields")}</label>
             <button
@@ -763,6 +820,7 @@ export default function NodeEditorPanel({
         </div>
       </motion.div>
 
+      {!mobile && (
       <div className="px-6 py-4 border-t sw-border-c flex items-center gap-2">
         {confirmDelete ? (
           <>
@@ -813,6 +871,7 @@ export default function NodeEditorPanel({
           </>
         )}
       </div>
+      )}
 
       {/* Блокнот на весь экран. Портал в body обязателен: у панели есть
           transform от framer, а он делает её точкой отсчёта для fixed —
