@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""Сборка встроенного сервера в отдельный exe.
+"""Сборка встроенного сервера в отдельный исполняемый файл (Windows и Linux).
 
 Вызывается из scripts/build-backend.mjs:
     .venv/Scripts/pyinstaller.exe backend/bluegem-backend.spec --noconfirm
@@ -9,6 +9,7 @@
 приложения и лишний повод для антивируса.
 """
 import os
+import sys
 
 from PyInstaller.utils.hooks import collect_submodules
 
@@ -58,7 +59,8 @@ exe = EXE(
     # Без консоли: сервер живёт фоном, чёрное окно рядом с приложением не нужно.
     console=False,
     disable_windowed_traceback=False,
-    icon=os.path.join(BACKEND_DIR, "..", "build", "icon.ico"),
+    # Иконка у exe бывает только на Windows; на Linux её несёт .desktop-файл.
+    icon=os.path.join(BACKEND_DIR, "..", "build", "icon.ico") if sys.platform == "win32" else None,
 )
 
 coll = COLLECT(  # noqa: F821

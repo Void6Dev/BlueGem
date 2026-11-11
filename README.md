@@ -28,6 +28,38 @@ Download one of the files from the latest release.
 
 Launch the application—everything starts automatically.
 
+## Linux
+
+| File                              | Description                                                                 |
+| --------------------------------- | --------------------------------------------------------------------------- |
+| **BlueGem-x.y.z-x86_64.AppImage** | Single file, runs on any modern distribution, updates itself from the app. |
+| **BlueGem-x.y.z-amd64.deb**       | Package for Ubuntu, Debian, Mint: menu entry and `.bgproj` association.    |
+
+**AppImage:** make it executable and run it:
+
+```bash
+chmod +x BlueGem-*.AppImage
+./BlueGem-*.AppImage
+```
+
+Some distributions (Ubuntu 22.04+) need FUSE 2 for AppImages: `sudo apt install libfuse2`.
+
+**deb:** `sudo apt install ./BlueGem-*.deb`, then start BlueGem from the application menu. Updates: download the new `.deb` and install it the same way (the app opens the release page for you).
+
+Data lives in `~/.config/BlueGem`.
+
+**Build it yourself** on Linux (Node 20+, Python 3.10+):
+
+```bash
+python3 -m venv backend/.venv
+backend/.venv/bin/python -m pip install -r backend/requirements.txt
+npm install
+cd frontend && yarn install && cd ..
+npm run dist:linux        # → release/*.AppImage and release/*.deb
+```
+
+The Linux build has to run on Linux: the embedded server is frozen with PyInstaller, which only builds for the system it runs on. The **Linux** GitHub workflow builds both files on every tagged version.
+
 ## Android
 
 BlueGem also runs on Android phones, with an interface built for one hand:
@@ -57,6 +89,7 @@ BlueGem stores all projects locally on your computer.
 
 * Installed version: `%APPDATA%\BlueGem`
 * Portable version: `BlueGem-Data` next to the executable
+* Linux: `~/.config/BlueGem`
 
 Your data is never uploaded or shared.
 

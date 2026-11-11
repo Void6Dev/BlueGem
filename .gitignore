@@ -4,6 +4,8 @@ frontend/build/
 release/
 backend/dist/
 backend/build/
+backend/.venv/
+backend/.pyinstaller/
 __pycache__/
 
 # Android: Gradle и Android Studio кладут сюда своё (правила для самого

@@ -80,6 +80,7 @@ function compareVersions(a, b) {
  * точно не просил.
  */
 function pickAsset(assets) {
+  if (process.platform === "linux") return pickLinuxAsset(assets);
   const exe = (assets || []).filter((a) => /\.exe$/i.test(a.name || ""));
   if (!exe.length) return null;
   const portable = exe.find((a) => /portable/i.test(a.name));
@@ -91,6 +92,21 @@ function pickAsset(assets) {
 
 function isPortable() {
   return Boolean(process.env.PORTABLE_EXECUTABLE_DIR);
+}
+
+/**
+ * Linux. Подменить себя на месте умеет только AppImage: это один файл, и его
+ * путь оболочка AppImage кладёт в $APPIMAGE. Версию из .deb обновляет
+ * пакетный менеджер (apt, «Программы») — ей файла нет, и интерфейс откроет
+ * страницу релиза: скачать новый .deb и поставить поверх.
+ */
+function pickLinuxAsset(assets) {
+  if (!process.env.APPIMAGE) return null;
+  const images = (assets || []).filter((a) => /\.AppImage$/i.test(a.name || ""));
+  if (!images.length) return null;
+  const arch = process.arch === "arm64" ? /(arm64|aarch64)/i : /(x86_64|amd64|x64)/i;
+  const asset = images.find((a) => arch.test(a.name)) || images[0];
+  return { name: asset.name, url: asset.browser_download_url, size: asset.size || 0 };
 }
 
 function toRelease(raw) {
@@ -235,6 +251,11 @@ async function install(tag, onProgress) {
     await download(release.asset, file, onProgress);
 
     log.info(`установка версии ${release.version} из ${file}`);
+    if (process.platform === "linux") {
+      await replaceAppImage(file);
+      setTimeout(() => app.quit(), 600);
+      return { ok: true, path: file };
+    }
     if (isPortable()) {
       await replacePortable(file);
       setTimeout(() => app.quit(), 600);
@@ -284,6 +305,32 @@ async function replacePortable(file) {
   ].join("\r\n"), "utf8");
 
   spawn("cmd.exe", ["/c", script], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+}
+
+/**
+ * Подменить AppImage скачанным.
+ *
+ * На Linux запущенный файл можно заменить переименованием: процесс держит
+ * старый файл открытым, а по пути уже лежит новый. Новый кладём рядом и
+ * переименовываем поверх — это атомарно, полускопированного файла по пути
+ * $APPIMAGE не бывает. Запустить его сразу нельзя: второй экземпляр упрётся
+ * в блокировку единственного окна и закроется. Поэтому запуск делает
+ * короткий sh-скрипт, дождавшись, пока этот процесс завершится.
+ */
+async function replaceAppImage(file) {
+  const target = process.env.APPIMAGE;
+  if (!target) throw new Error("AppImage path unknown");
+  const next = `${target}.new`;
+  await fsp.copyFile(file, next);
+  await fsp.chmod(next, 0o755);
+  await fsp.rename(next, target);
+  await fsp.rm(file, { force: true }).catch(() => {});
+
+  const script = 'while kill -0 "$1" 2>/dev/null; do sleep 0.5; done; exec "$2"';
+  spawn("/bin/sh", ["-c", script, "sh", String(process.pid), target], {
+    detached: true,
+    stdio: "ignore",
+  }).unref();
 }
 
 async function download(asset, file, onProgress) {

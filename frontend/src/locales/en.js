@@ -464,7 +464,7 @@ const en = {
     checkNow: "Check",
     launching: "The installer has started — the app will close",
     portableDone: "Update downloaded — the app will close and reopen updated",
-    noAsset: "This release has no Windows file — opening the release page",
+    noAsset: "This release has no file for your system — opening the release page",
     installFailed: "Install failed: {error}",
     allVersions: "All versions",
     currentBadge: "current",

@@ -6,7 +6,7 @@
  * свободном порту и отдаёт и API, и сам интерфейс. Он стартует вместе с окном
  * и гасится при выходе; пользователь о нём не знает.
  *
- * В собранном приложении это `resources/backend/bluegem-backend.exe`
+ * В собранном приложении это `resources/backend/bluegem-backend(.exe)`
  * (заморожен PyInstaller'ом), при разработке — python из backend/.venv.
  */
 const { spawn } = require("node:child_process");
@@ -23,6 +23,12 @@ const HOST = "127.0.0.1";
 const READY_TIMEOUT_MS = 60_000;
 const PORT_ATTEMPTS = 4;
 const EXIT_PORT_BUSY = 98;
+
+// На Windows у исполняемых файлов расширение .exe, а python в venv лежит в
+// Scripts\; на Linux и macOS — без расширения и в bin/.
+const IS_WIN = process.platform === "win32";
+const BACKEND_BIN = IS_WIN ? "bluegem-backend.exe" : "bluegem-backend";
+const VENV_PYTHON = IS_WIN ? ["Scripts", "python.exe"] : ["bin", "python"];
 
 /** Свободный порт: просим ОС выдать любой и сразу отпускаем. */
 function freePort() {
@@ -89,7 +95,7 @@ class Backend {
   /** Чем именно запускать сервер: замороженный exe или python из venv. */
   resolveCommand() {
     if (this.packaged) {
-      const exe = path.join(process.resourcesPath, "backend", "bluegem-backend.exe");
+      const exe = path.join(process.resourcesPath, "backend", BACKEND_BIN);
       if (!fs.existsSync(exe)) {
         throw new BackendError(
           t("backend.missing"),
@@ -100,7 +106,7 @@ class Backend {
     }
 
     const backendDir = path.join(this.projectRoot, "backend");
-    const python = path.join(backendDir, ".venv", "Scripts", "python.exe");
+    const python = path.join(backendDir, ".venv", ...VENV_PYTHON);
     if (!fs.existsSync(python)) {
       throw new BackendError(t("backend.noVenv"), t("backend.noVenvDetail"));
     }

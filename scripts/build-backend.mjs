@@ -1,8 +1,11 @@
 /**
- * Замораживает FastAPI-сервер в самостоятельный exe.
+ * Замораживает FastAPI-сервер в самостоятельный исполняемый файл.
  *
- * На выходе backend/dist/bluegem-backend/bluegem-backend.exe со всеми
+ * На выходе backend/dist/bluegem-backend/bluegem-backend(.exe) со всеми
  * зависимостями рядом — на машине пользователя python не нужен.
+ *
+ * PyInstaller не собирает «на вырост»: сервер для Windows собирается на
+ * Windows, для Linux — на Linux. Поэтому скрипт один, а пути — по системе.
  *
  * Запуск: npm run build:backend
  */
@@ -12,9 +15,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const PYTHON = join(ROOT, "backend", ".venv", "Scripts", "python.exe");
+const IS_WIN = process.platform === "win32";
+const PYTHON = IS_WIN
+  ? join(ROOT, "backend", ".venv", "Scripts", "python.exe")
+  : join(ROOT, "backend", ".venv", "bin", "python");
 const SPEC = join(ROOT, "backend", "bluegem-backend.spec");
-const OUT = join(ROOT, "backend", "dist", "bluegem-backend", "bluegem-backend.exe");
+const OUT = join(ROOT, "backend", "dist", "bluegem-backend", IS_WIN ? "bluegem-backend.exe" : "bluegem-backend");
 
 function run(cmd, args, label) {
   console.log(`\n[backend] ${label}`);
@@ -25,12 +31,19 @@ function run(cmd, args, label) {
 
 if (!existsSync(PYTHON)) {
   console.error(
-    [
-      "Не найдено окружение backend/.venv.",
-      "Создайте его и поставьте зависимости:",
-      "  python -m venv backend\\.venv",
-      "  backend\\.venv\\Scripts\\python.exe -m pip install -r backend\\requirements.txt",
-    ].join("\n"),
+    (IS_WIN
+      ? [
+        "Не найдено окружение backend/.venv.",
+        "Создайте его и поставьте зависимости:",
+        "  python -m venv backend\\.venv",
+        "  backend\\.venv\\Scripts\\python.exe -m pip install -r backend\\requirements.txt",
+      ]
+      : [
+        "Не найдено окружение backend/.venv.",
+        "Создайте его и поставьте зависимости:",
+        "  python3 -m venv backend/.venv",
+        "  backend/.venv/bin/python -m pip install -r backend/requirements.txt",
+      ]).join("\n"),
   );
   process.exit(1);
 }

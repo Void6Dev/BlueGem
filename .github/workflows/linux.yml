@@ -1,0 +1,88 @@
+# Linux-сборка BlueGem: AppImage и .deb.
+#
+# Когда собирается:
+#   * тег версии (1.5.0 / v1.5.0) — файлы прикладываются к релизу с этим тегом.
+#     Если релиза ещё нет, он создаётся черновиком: десктопная версия черновики
+#     не видит (electron/update.js), и Windows-пользователи не получат релиз без
+#     своего .exe. Опубликовать черновик — когда рядом будут файлы для Windows;
+#   * пуш, который трогает десктопную часть, и запуск вручную (Actions → Linux →
+#     Run workflow) — файлы только в артефактах прогона.
+#
+# Собирается на Linux потому, что встроенный сервер замораживает PyInstaller,
+# а он собирает только под ту систему, на которой запущен.
+name: Linux
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*", "[0-9]+.[0-9]+.[0-9]+*"]
+    paths:
+      - "electron/**"
+      - "backend/**"
+      - "frontend/src/**"
+      - "frontend/package.json"
+      - "scripts/build.mjs"
+      - "scripts/build-backend.mjs"
+      - "electron-builder.yml"
+      - "package.json"
+      - ".github/workflows/linux.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/yarn.lock
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Сервер: то же окружение backend/.venv, что и при сборке на Windows.
+      - name: Backend environment
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/python -m pip install -r backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd frontend && yarn install --frozen-lockfile --ignore-engines
+
+      # AppImage и deb. Публикацию делает следующий шаг, а не electron-builder.
+      - name: Build
+        run: npm run dist:linux -- --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BlueGem-linux
+          path: |
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --title "BlueGem $TAG" --notes "Linux: AppImage и .deb."
+          fi
+          gh release upload "$TAG" release/*.AppImage release/*.deb --clobber

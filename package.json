@@ -16,6 +16,8 @@
     "build": "node scripts/build.mjs",
     "dist": "node scripts/build.mjs && electron-builder --win nsis portable",
     "dist:dir": "node scripts/build.mjs && electron-builder --win dir",
+    "dist:linux": "node scripts/build.mjs && electron-builder --linux AppImage deb",
+    "dist:linux:dir": "node scripts/build.mjs && electron-builder --linux dir",
     "android": "node scripts/build-android.mjs --open",
     "android:apk": "node scripts/build-android.mjs --apk"
   },
