@@ -16,6 +16,7 @@ import {
   Link2, Unlink, Crosshair, Target, ArrowLeftRight, Pencil, Copy, Trash2,
   SquareDashedMousePointer, Spline, Waypoints, Scissors, Shapes,
   LayoutGrid, MoveHorizontal, Anchor, ClipboardPaste, Minimize2, Map as MapIcon, Eye, MoreHorizontal, Bookmark, BookmarkPlus,
+  BookOpen, Printer, Image as ImageIcon,
 } from "lucide-react";
 import { api, apiErrorMessage } from "@/lib/api";
 import {
@@ -25,7 +26,9 @@ import { useT } from "@/lib/i18n";
 import { hotkey } from "@/lib/hotkey";
 import { LAYOUTS } from "@/lib/layout";
 import { pushEntry } from "@/lib/history";
-import { downloadJson, downloadMarkdown } from "@/lib/exporters";
+import {
+  downloadCanvasImage, downloadHtmlBook, downloadJson, downloadMarkdown, downloadPdfBook,
+} from "@/lib/exporters";
 import { nodeBody } from "@/lib/search";
 import { backlinksOf } from "@/lib/backlinks";
 import { makeTemplate, nodeFromTemplate, templatesOf } from "@/lib/nodeTemplates";
@@ -1638,16 +1641,34 @@ function EditorInner() {
 
   const exportAs = useCallback(async (kind) => {
     try {
-      const snapshot = await api.exportProject(id);
-      const res = kind === "md" ? await downloadMarkdown(snapshot) : await downloadJson(snapshot);
-      if (res?.canceled) return; // передумали в диалоге сохранения — это не ошибка
+      let res;
+      if (kind === "png" || kind === "svg") {
+        // Картинка — с холста как он есть: только узлы текущей страницы.
+        if (!rf.getNodes().some((n) => !n.hidden)) { toast.message(tr("editor.toasts.nothingToDraw")); return; }
+        const pending = toast.loading(tr("editor.toasts.drawing"));
+        try {
+          res = await downloadCanvasImage(rf, kind, project?.name);
+        } finally {
+          toast.dismiss(pending);
+        }
+      } else {
+        const snapshot = await api.exportProject(id);
+        if (kind === "md") res = await downloadMarkdown(snapshot);
+        else if (kind === "html") res = await downloadHtmlBook(snapshot);
+        else if (kind === "pdf") res = await downloadPdfBook(snapshot);
+        else res = await downloadJson(snapshot);
+      }
+      if (res?.canceled || res?.printed) return; // передумали или ушли в диалог печати
       // В приложении полезно видеть, куда именно лёг файл.
       const where = res?.path ? ` → ${res.path}` : "";
-      toast.success(tr(kind === "md" ? "editor.toasts.exportedMd" : "editor.toasts.exported", { where }));
+      const key = {
+        md: "exportedMd", html: "exportedBook", pdf: "exportedBook", png: "exportedImage", svg: "exportedImage",
+      }[kind] || "exported";
+      toast.success(tr(`editor.toasts.${key}`, { where }));
     } catch (e) {
       toast.error(e?.message || apiErrorMessage(e, "errors.export"));
     }
-  }, [id]);
+  }, [id, rf, project?.name]);
 
   /* ---------------- derived data ---------------- */
 
@@ -2623,6 +2644,10 @@ function EditorInner() {
     { id: "settings", label: tr("palette.settings"), icon: Settings, run: () => { closeAll(); setShowSettings(true); } },
     { id: "export-json", label: tr("palette.exportJson"), icon: FileJson, run: () => exportAs("json") },
     { id: "export-md", label: tr("palette.exportMd"), icon: FileTextIcon, run: () => exportAs("md") },
+    { id: "export-html", label: tr("palette.exportHtml"), icon: BookOpen, run: () => exportAs("html") },
+    { id: "export-pdf", label: tr("palette.exportPdf"), icon: Printer, run: () => exportAs("pdf") },
+    { id: "export-png", label: tr("palette.exportPng"), icon: ImageIcon, run: () => exportAs("png") },
+    { id: "export-svg", label: tr("palette.exportSvg"), icon: ImageIcon, run: () => exportAs("svg") },
     { id: "undo", label: tr("palette.undo"), hint: "Ctrl+Z", icon: Undo2, run: undo },
     { id: "shortcuts", label: tr("palette.shortcuts"), hint: "?", icon: Keyboard, run: () => setShowShortcuts(true) },
     { id: "home", label: tr("palette.home"), icon: ArrowLeft, run: () => navigate("/") },
@@ -2790,6 +2815,12 @@ function EditorInner() {
       items: [
         { id: "more-export-json", label: tr("editor.exportJson"), icon: FileJson, onSelect: () => exportAs("json") },
         { id: "more-export-md", label: tr("editor.exportMd"), icon: FileTextIcon, onSelect: () => exportAs("md") },
+        { id: "sep-more-export", separator: true },
+        { id: "more-export-html", label: tr("editor.exportHtml"), icon: BookOpen, onSelect: () => exportAs("html") },
+        { id: "more-export-pdf", label: tr("editor.exportPdf"), icon: Printer, onSelect: () => exportAs("pdf") },
+        { id: "sep-more-export2", separator: true },
+        { id: "more-export-png", label: tr("editor.exportPng"), icon: ImageIcon, onSelect: () => exportAs("png") },
+        { id: "more-export-svg", label: tr("editor.exportSvg"), icon: ImageIcon, onSelect: () => exportAs("svg") },
       ],
     },
     { id: "sep-more2", separator: true },
@@ -2839,6 +2870,8 @@ function EditorInner() {
       items: [
         { id: "m-export-json", label: tr("editor.exportJson"), icon: FileJson, onSelect: () => exportAs("json") },
         { id: "m-export-md", label: tr("editor.exportMd"), icon: FileTextIcon, onSelect: () => exportAs("md") },
+        { id: "m-export-html", label: tr("editor.exportHtml"), icon: BookOpen, onSelect: () => exportAs("html") },
+        { id: "m-export-png", label: tr("editor.exportPng"), icon: ImageIcon, onSelect: () => exportAs("png") },
       ],
     },
     { id: "m-settings", label: tr("ctx.settings"), icon: Settings, onSelect: () => { closeAll(); setShowSettings(true); } },

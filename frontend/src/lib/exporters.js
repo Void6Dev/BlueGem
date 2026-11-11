@@ -1,5 +1,5 @@
 // Turning a project into files the author can keep, share or version.
-import { isDesktop, saveTextFile } from "@/lib/desktop";
+import { isDesktop, printPdf, saveTextFile } from "@/lib/desktop";
 import { isNative, shareTextFile } from "@/lib/platform";
 import { t } from "@/lib/i18n";
 import {
@@ -10,7 +10,8 @@ import {
 export const PROJECT_EXT = "bgproj";
 
 function download(filename, text, mime = "application/json") {
-  const url = URL.createObjectURL(new Blob([text], { type: `${mime};charset=utf-8` }));
+  const type = typeof text === "string" ? `${mime};charset=utf-8` : mime;
+  const url = URL.createObjectURL(new Blob([text], { type }));
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
@@ -25,15 +26,18 @@ function download(filename, text, mime = "application/json") {
  * В приложении — системный диалог «Сохранить как», в браузере — обычная
  * загрузка. Возвращает {saved, canceled, path} — вызывающий решает, что сказать.
  */
-async function writeFile(filename, text, { mime = "application/json", filters } = {}) {
+async function writeFile(filename, text, { mime = "application/json", filters, base64 } = {}) {
+  // base64 — двоичный файл (картинка): строка base64 без заголовка data:.
   // Телефон: системное меню «Поделиться» — сохранить в «Файлы», на Диск,
   // отправить в мессенджер. Загрузки по ссылке в WebView нет.
-  if (isNative) return shareTextFile(filename, text, { title: filename });
+  if (isNative) return shareTextFile(filename, text, { title: filename, base64: !!base64 });
   if (!isDesktop) {
-    download(filename, text, mime);
+    download(filename, base64 ? Uint8Array.from(atob(text), (c) => c.charCodeAt(0)) : text, mime);
     return { saved: true };
   }
-  const res = await saveTextFile({ defaultPath: filename, content: text, filters });
+  const res = await saveTextFile({
+    defaultPath: filename, content: text, filters, ...(base64 ? { encoding: "base64" } : {}),
+  });
   if (res.canceled) return { saved: false, canceled: true };
   if (!res.ok) throw new Error(res.error || t("errors.saveFile"));
   return { saved: true, path: res.path };
@@ -149,4 +153,56 @@ export function readJsonFile(file) {
     };
     reader.readAsText(file);
   });
+}
+
+/* ---------------- книга мира и картинка холста ---------------- */
+
+/** Книга мира одним HTML-файлом (см. lib/exportBook.js). */
+export async function downloadHtmlBook(snapshot) {
+  const { toHtmlBook } = await import("@/lib/exportBook");
+  const html = await toHtmlBook(snapshot);
+  return writeFile(`${slugify(snapshot?.project?.name)}.html`, html, {
+    mime: "text/html",
+    filters: [{ name: "HTML", extensions: ["html"] }],
+  });
+}
+
+/**
+ * Книга мира в PDF. В приложении — сразу файлом; в браузере — системный
+ * диалог печати, где PDF выбирается как принтер.
+ */
+export async function downloadPdfBook(snapshot) {
+  const { toHtmlBook } = await import("@/lib/exportBook");
+  const html = await toHtmlBook(snapshot);
+  const name = `${slugify(snapshot?.project?.name)}.pdf`;
+  if (isDesktop) {
+    const res = await printPdf({ html, defaultPath: name });
+    if (res.canceled) return { saved: false, canceled: true };
+    if (!res.ok) throw new Error(res.error || t("errors.saveFile"));
+    return { saved: true, path: res.path };
+  }
+  const frame = document.createElement("iframe");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+  frame.srcdoc = html;
+  document.body.appendChild(frame);
+  await new Promise((resolve) => { frame.onload = resolve; });
+  frame.contentWindow.focus();
+  frame.contentWindow.print();
+  setTimeout(() => frame.remove(), 60000);
+  return { saved: true, printed: true };
+}
+
+/** Картинка холста PNG или SVG (см. lib/exportImage.js). */
+export async function downloadCanvasImage(rf, format, projectName) {
+  const { canvasImage } = await import("@/lib/exportImage");
+  const url = await canvasImage(rf, format);
+  const comma = url.indexOf(",");
+  const head = url.slice(0, comma);
+  const body = url.slice(comma + 1);
+  const file = `${slugify(projectName)}.${format}`;
+  if (format === "svg") {
+    const text = /;base64$/.test(head) ? atob(body) : decodeURIComponent(body);
+    return writeFile(file, text, { mime: "image/svg+xml", filters: [{ name: "SVG", extensions: ["svg"] }] });
+  }
+  return writeFile(file, body, { mime: "image/png", base64: true, filters: [{ name: "PNG", extensions: ["png"] }] });
 }

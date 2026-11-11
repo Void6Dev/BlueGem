@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld("bluegem", {
 
   /** Системный диалог сохранения. Возвращает { ok, canceled, path, error }. */
   saveFile: (options) => ipcRenderer.invoke("bg:save-file", options),
+  /** HTML → PDF через невидимое окно и диалог сохранения. { ok, canceled, path, error }. */
+  printPdf: (options) => ipcRenderer.invoke("bg:print-pdf", options),
   /** Системный диалог открытия. Возвращает { ok, canceled, path, content, error }. */
   openFile: (options) => ipcRenderer.invoke("bg:open-file", options),
   /** Файл, с которым приложение запустили (двойной клик по .bgproj), если он был. */

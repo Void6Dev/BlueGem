@@ -193,16 +193,17 @@ if (typeof window !== "undefined" && !isNative && window.visualViewport) {
  * сохранить в «Файлы», на Диск или отправить в мессенджер.
  * @returns {Promise<{saved: boolean, canceled?: boolean}>}
  */
-export async function shareTextFile(filename, text, { title } = {}) {
+export async function shareTextFile(filename, text, { title, base64 = false } = {}) {
   const [{ Filesystem, Directory, Encoding }, { Share }] = await Promise.all([
     import("@capacitor/filesystem"),
     import("@capacitor/share"),
   ]);
+  // base64 — двоичный файл (картинка): без кодировки Filesystem пишет байты.
   const written = await Filesystem.writeFile({
     path: filename,
     data: text,
     directory: Directory.Cache,
-    encoding: Encoding.UTF8,
+    ...(base64 ? {} : { encoding: Encoding.UTF8 }),
   });
   try {
     await Share.share({ title: title || filename, files: [written.uri], dialogTitle: title || filename });

@@ -204,6 +204,10 @@ const en = {
     timeline: "Timeline",
     exportJson: "JSON (re-importable)",
     exportMd: "Markdown (world bible)",
+    exportHtml: "World book (HTML)",
+    exportPdf: "World book (PDF)",
+    exportPng: "Canvas image (PNG)",
+    exportSvg: "Canvas image (SVG)",
     settings: "Settings",
     shortcuts: "Keyboard shortcuts (?)",
     dropHere: "Release — “{type}” will appear here",
@@ -256,6 +260,10 @@ const en = {
       layout: "Layout: {name}",
       exported: "Project exported{where}",
       exportedMd: "Markdown exported{where}",
+      exportedBook: "World book saved{where}",
+      exportedImage: "Canvas image saved{where}",
+      drawing: "Drawing the canvas…",
+      nothingToDraw: "There is nothing on this canvas to draw yet",
     },
   },
 
@@ -317,6 +325,10 @@ const en = {
     settings: "Open settings",
     exportJson: "Export: JSON",
     exportMd: "Export: Markdown",
+    exportHtml: "Export: world book (HTML)",
+    exportPdf: "Export: world book (PDF)",
+    exportPng: "Export: canvas image (PNG)",
+    exportSvg: "Export: canvas image (SVG)",
     undo: "Undo the last action",
     shortcuts: "Keyboard shortcuts",
     home: "Back to projects",
@@ -798,6 +810,14 @@ const en = {
     table: "Table",
     hr: "Divider",
     col: "Column",
+  },
+
+  book: {
+    contents: "Contents",
+    links: "Links",
+    other: "Other",
+    empty: "The project has no nodes yet.",
+    footer: "Made with BlueGem",
   },
 
   export: {

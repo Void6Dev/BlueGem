@@ -204,6 +204,10 @@ const ru = {
     timeline: "Таймлайн",
     exportJson: "JSON (с импортом)",
     exportMd: "Markdown (библия мира)",
+    exportHtml: "Книга мира (HTML)",
+    exportPdf: "Книга мира (PDF)",
+    exportPng: "Картинка холста (PNG)",
+    exportSvg: "Картинка холста (SVG)",
     settings: "Настройки",
     shortcuts: "Горячие клавиши (?)",
     dropHere: "Отпустите — здесь появится «{type}»",
@@ -256,6 +260,10 @@ const ru = {
       layout: "Раскладка: {name}",
       exported: "Проект выгружен{where}",
       exportedMd: "Markdown выгружен{where}",
+      exportedBook: "Книга мира сохранена{where}",
+      exportedImage: "Картинка холста сохранена{where}",
+      drawing: "Рисуем холст…",
+      nothingToDraw: "На этом холсте пока нечего рисовать",
     },
   },
 
@@ -317,6 +325,10 @@ const ru = {
     settings: "Открыть настройки",
     exportJson: "Экспорт: JSON",
     exportMd: "Экспорт: Markdown",
+    exportHtml: "Экспорт: книга мира (HTML)",
+    exportPdf: "Экспорт: книга мира (PDF)",
+    exportPng: "Экспорт: картинка холста (PNG)",
+    exportSvg: "Экспорт: картинка холста (SVG)",
     undo: "Отменить последнее действие",
     shortcuts: "Горячие клавиши",
     home: "К списку проектов",
@@ -798,6 +810,14 @@ const ru = {
     table: "Таблица",
     hr: "Разделитель",
     col: "Столбец",
+  },
+
+  book: {
+    contents: "Содержание",
+    links: "Связи",
+    other: "Прочее",
+    empty: "В проекте пока нет узлов.",
+    footer: "Собрано в BlueGem",
   },
 
   export: {

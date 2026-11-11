@@ -34,9 +34,15 @@ export function projectFilters() {
  * Сохранить текст в файл системным диалогом.
  * @returns {Promise<{ok: boolean, canceled?: boolean, path?: string, error?: string}>}
  */
-export function saveTextFile({ defaultPath, content, filters }) {
+export function saveTextFile({ defaultPath, content, filters, encoding }) {
   if (!isDesktop) return Promise.resolve({ ok: false, error: t("errors.outsideApp") });
-  return bridge.saveFile({ defaultPath, content, filters });
+  return bridge.saveFile({ defaultPath, content, filters, encoding });
+}
+
+/** HTML → PDF средствами оболочки (только в приложении для компьютера). */
+export function printPdf({ html, defaultPath }) {
+  if (!isDesktop || !bridge.printPdf) return Promise.resolve({ ok: false, error: t("errors.outsideApp") });
+  return bridge.printPdf({ html, defaultPath });
 }
 
 /** Выбрать файл проекта системным диалогом. */
