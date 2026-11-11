@@ -1,12 +1,13 @@
 {
   "name": "bluegem",
   "productName": "BlueGem",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "private": true,
   "description": "BlueGem — визуальный конструктор миров: персонажи, фракции, локации и события на одном холсте",
   "author": "BlueGem",
   "license": "Specified",
   "main": "electron/main.js",
+  "desktopName": "bluegem.desktop",
   "scripts": {
     "postinstall": "node scripts/make-icons.mjs",
     "icon": "node scripts/make-icons.mjs",

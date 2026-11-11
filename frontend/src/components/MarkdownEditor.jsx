@@ -7,10 +7,13 @@ import {
   Minus, Quote, Strikethrough, Table2,
 } from "lucide-react";
 import {
-  Annotation, Compartment, EditorSelection, EditorState, Prec, StateEffect, Transaction,
+  Annotation, Compartment, EditorSelection, EditorState, Prec, RangeSetBuilder, StateEffect,
+  StateField, Transaction,
 } from "@codemirror/state";
 import {
-  Decoration, EditorView, ViewPlugin, WidgetType, keymap, placeholder as cmPlaceholder, tooltips,
+  Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, gutterLineClass,
+  highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers, placeholder as cmPlaceholder,
+  tooltips,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { LanguageSupport, syntaxTree } from "@codemirror/language";
@@ -237,8 +240,46 @@ function build(view, ctx) {
   return Decoration.set(out, true);
 }
 
+/* Номер строки у заголовка. Заголовок крупнее текста и с отступом сверху, а
+   номер стоит на высоте обычной строки — он оказывался над заголовком.
+   Ячейке номера даём класс уровня (is-h1…is-h6), и CSS опускает номер на
+   первый ряд заголовка. Только в живом оформлении: в разметке заголовки
+   того же кегля, что и текст. */
+class HeadingGutter extends GutterMarker {
+  constructor(level) {
+    super();
+    this.elementClass = `is-h${level}`;
+  }
+  eq(other) { return other.elementClass === this.elementClass; }
+}
+const HEADING_GUTTER = [1, 2, 3, 4, 5, 6].map((level) => new HeadingGutter(level));
+
+function headingLines(state) {
+  const out = new RangeSetBuilder();
+  syntaxTree(state).iterate({
+    enter: (node) => {
+      const h = /^(?:ATX|Setext)Heading(\d)$/.exec(node.name);
+      if (!h) return undefined;
+      const at = state.doc.lineAt(node.from).from;
+      out.add(at, at, HEADING_GUTTER[Number(h[1]) - 1]);
+      return false;
+    },
+  });
+  return out.finish();
+}
+
+const headingGutter = StateField.define({
+  create: headingLines,
+  update(value, tr) {
+    return tr.docChanged || syntaxTree(tr.startState) !== syntaxTree(tr.state)
+      ? headingLines(tr.state)
+      : value;
+  },
+  provide: (field) => gutterLineClass.from(field),
+});
+
 function livePreview(ctx) {
-  return ViewPlugin.fromClass(class {
+  return [headingGutter, ViewPlugin.fromClass(class {
     constructor(view) { this.decorations = build(view, ctx); }
     update(u) {
       if (u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged
@@ -260,7 +301,7 @@ function livePreview(ctx) {
         return true;
       },
     },
-  });
+  })];
 }
 
 /* ------------------------------------------------------------------ */
@@ -410,6 +451,11 @@ const formatKeymap = [
 const SOURCE_KEY = "bluegem:mdSource";
 const preview = new Compartment();
 
+// Номера строк и подсветка строки с курсором — на компьютере. На телефоне
+// колонка номеров отняла бы десятую часть и без того узкой строки.
+const lines = new Compartment();
+const numbered = () => [lineNumbers(), highlightActiveLine(), highlightActiveLineGutter()];
+
 const MarkdownEditor = forwardRef(function MarkdownEditor(
   {
     value,
@@ -472,6 +518,7 @@ const MarkdownEditor = forwardRef(function MarkdownEditor(
           // transform, и position: fixed отсчитывался бы не от экрана.
           tooltips({ parent: document.body, position: "fixed" }),
           preview.of(source ? [] : livePreview(ctx)),
+          lines.of(mobile ? [] : numbered()),
           cmPlaceholder(placeholder || tr("md.placeholder")),
           EditorView.contentAttributes.of({
             spellcheck: "true", autocorrect: "on", autocapitalize: "sentences", "data-testid": "md-input",
@@ -516,6 +563,12 @@ const MarkdownEditor = forwardRef(function MarkdownEditor(
     });
   }, [value]);
 
+  // Повернули экран или сузили окно до телефонной раскладки — номера строк
+  // убираются или возвращаются без пересоздания редактора.
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: lines.reconfigure(mobile ? [] : numbered()) });
+  }, [mobile]);
+
   // Названия узлов сменились — перекрасить [[ссылки]] (есть такой узел или нет).
   useEffect(() => { viewRef.current?.dispatch({ effects: refresh.of(null) }); }, [byTitle]);
 
@@ -559,7 +612,7 @@ const MarkdownEditor = forwardRef(function MarkdownEditor(
   const SourceIcon = source ? FileText : Code2;
 
   return (
-    <div ref={rootRef} className={`sw-lmd ${large ? "is-large" : ""} ${className}`} data-testid="markdown-editor">
+    <div ref={rootRef} className={`sw-lmd ${large ? "is-large" : ""} ${mobile ? "" : "has-lines"} ${className}`} data-testid="markdown-editor">
       {toolbar && !mobile && (
         <div
           className={`sw-lmd-tools ${toolbarScroll ? "is-scroll" : ""}`}
