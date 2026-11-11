@@ -4,6 +4,7 @@ import { Search, CornerDownLeft } from "lucide-react";
 import { NodeIcon } from "@/components/NodeIcon";
 import { useT } from "@/lib/i18n";
 import { scrollWithin } from "@/lib/scrollWithin";
+import { useSlidingThumb } from "@/lib/useSlidingThumb";
 
 /**
  * Ctrl+K palette: one input that reaches every node and every command.
@@ -16,6 +17,9 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  // Строки въезжают лесенкой только при открытии: на каждой букве запроса
+  // список пересобирается, и лесенка на каждый символ рябила бы.
+  const typedRef = useRef(false);
 
   useEffect(() => {
     if (open) {
@@ -45,6 +49,9 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
     scrollWithin(listRef.current, listRef.current?.querySelector('[data-active="true"]'), "nearest", "auto");
   }, [cursor]);
 
+  // Подсветка строки — один ползунок, который скользит за мышью и стрелками.
+  useSlidingThumb(listRef, [cursor, open], '[data-active="true"]');
+
   if (!open) return null;
 
   const choose = (item) => {
@@ -61,14 +68,14 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] px-4 bg-black/45 backdrop-blur-sm"
+      className="sw-overlay-in fixed inset-0 z-50 flex items-start justify-center pt-[12vh] px-4 bg-black/45 backdrop-blur-sm"
       onClick={onClose}
       data-testid="command-palette"
     >
       <motion.div
-        initial={{ opacity: 0, y: -8, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+        initial={{ opacity: 0, y: -14, scale: 0.96, filter: "blur(4px)" }}
+        animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+        transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-xl rounded-xl border sw-border-c sw-panel overflow-hidden"
       >
@@ -78,7 +85,7 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
             ref={inputRef}
             data-testid="command-palette-input"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => { typedRef.current = true; setQ(e.target.value); }}
             onKeyDown={onKeyDown}
             placeholder={t("palette.placeholder")}
             className="flex-1 bg-transparent outline-none text-sm placeholder:text-[var(--sw-text-dim)]"
@@ -86,7 +93,8 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
           <kbd>Esc</kbd>
         </div>
 
-        <div ref={listRef} className="max-h-[52vh] overflow-y-auto py-2">
+        <div ref={listRef} className="sw-palette-list sw-thumb-host max-h-[52vh] overflow-y-auto py-2">
+          <span className="sw-thumb" aria-hidden="true" />
           {items.length === 0 && (
             <p className="px-4 py-6 text-center text-sm sw-text-dim">{t("common.nothingFound")}</p>
           )}
@@ -99,8 +107,11 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
                 data-testid={`palette-item-${item.id}`}
                 onMouseEnter={() => setCursor(i)}
                 onClick={() => choose(item)}
-                className="w-full flex items-center gap-3 px-4 py-2 text-left"
-                style={{ background: i === cursor ? "var(--sw-hover)" : "transparent" }}
+                className={`w-full flex items-center gap-3 px-4 py-2 text-left ${!typedRef.current && i < 12 ? "sw-palette-enter" : ""}`}
+                style={{
+                  background: i === cursor ? "var(--sw-hover)" : "transparent",
+                  animationDelay: !typedRef.current && i < 12 ? `${60 + i * 22}ms` : undefined,
+                }}
               >
                 {item.kind === "node" ? (
                   <span className="w-5 h-5 rounded flex items-center justify-center shrink-0" style={{ background: item.color }}>

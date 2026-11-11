@@ -2114,7 +2114,7 @@ function EditorInner() {
         }}
       >
         <span
-          className="w-1.5 h-1.5 rounded-full shrink-0"
+          className="sw-tab-dot w-1.5 h-1.5 rounded-full shrink-0"
           style={{ background: c.id === activeCanvas ? "var(--sw-accent)" : "var(--sw-border-strong)" }}
         />
         {c.label}
@@ -2618,7 +2618,7 @@ function EditorInner() {
       {/* Left sidebar */}
       {sidebar.open && (
         <aside
-          className="sw-sidebar sw-surface flex flex-col shrink-0 relative"
+          className="sw-sidebar sw-sidebar-in sw-surface flex flex-col shrink-0 relative"
           style={{ width: sidebar.width }}
           data-testid="left-sidebar"
         >
@@ -2708,7 +2708,7 @@ function EditorInner() {
           шириной в панель. Она невидима, но любой focus() внутри неё уводит
           вбок весь экран. */}
       <div
-        className="sw-canvas-host flex-1 relative overflow-hidden"
+        className="sw-canvas-host sw-fade-in flex-1 relative overflow-hidden"
         ref={paneRef}
         onDragOver={onCanvasDragOver}
         onDrop={onCanvasDrop}

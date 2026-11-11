@@ -16,6 +16,7 @@ import { openSnapshot, parseSnapshot } from "@/lib/openProject";
 import UpdateCenter from "@/components/UpdateCenter";
 import logo from "@/assets/logo.png";
 import { LANGUAGES, getLanguage, setLanguage, useT } from "@/lib/i18n";
+import { useSlidingThumb } from "@/lib/useSlidingThumb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,6 +29,78 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const SORT_IDS = ["updated", "name", "size"];
+
+// Пересортировка и поиск двигают карточки, а не переставляют их скачком:
+// видно, куда уехал проект. Пружина без заметного перелёта — сетка не желе.
+const CARD_LAYOUT = { type: "spring", stiffness: 420, damping: 38, mass: 0.9 };
+
+const reducedMotion = () =>
+  typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+/**
+ * Число, которое досчитывает до значения, а не появляется готовым.
+ * Считает только вверх от прежнего значения: удалили проект — цифра просто
+ * сменится, отсчитывать вниз на глазах у пользователя незачем.
+ */
+function useCountUp(value, duration = 900) {
+  const [shown, setShown] = useState(0);
+  const from = useRef(0);
+  useEffect(() => {
+    const start = from.current;
+    from.current = value;
+    if (value <= start || reducedMotion()) { setShown(value); return undefined; }
+    let frame = 0;
+    const t0 = performance.now();
+    const tick = (now) => {
+      const k = Math.min(1, (now - t0) / duration);
+      const eased = 1 - (1 - k) ** 3;
+      setShown(Math.round(start + (value - start) * eased));
+      if (k < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value, duration]);
+  return shown;
+}
+
+function CountUp({ value, children }) {
+  const n = useCountUp(value);
+  return children(n);
+}
+
+/** Свет на карточке следует за курсором: пишем координаты в CSS-переменные,
+ *  без состояния React — иначе каждая мышиная миля перерисовывала бы сетку. */
+function trackPointer(e) {
+  const el = e.currentTarget;
+  const r = el.getBoundingClientRect();
+  el.style.setProperty("--mx", `${e.clientX - r.left}px`);
+  el.style.setProperty("--my", `${e.clientY - r.top}px`);
+}
+
+/** Переключатель языка: выбранный язык подсвечивает ползунок, который
+ *  переезжает к нажатому, а не перекрашивает кнопку на месте. */
+function LanguageSwitch({ lang }) {
+  const ref = useRef(null);
+  useSlidingThumb(ref, [lang]);
+  return (
+    <div ref={ref} className="sw-langseg sw-thumb-host mr-1" data-testid="lang-switch">
+      <span className="sw-thumb" aria-hidden="true" />
+      {LANGUAGES.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          data-testid={`lang-${option.id}`}
+          aria-pressed={lang === option.id}
+          onClick={() => setLanguage(option.id)}
+          title={option.label}
+          className="sw-langseg-item"
+        >
+          {option.short}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function relativeTime(iso, t, lang) {
   const then = new Date(iso).getTime();
@@ -191,32 +264,20 @@ export default function Dashboard() {
   ), [projects]);
 
   return (
-    <div className="min-h-screen sw-bg" data-testid="dashboard">
+    <div className="min-h-screen sw-bg sw-dashboard" data-testid="dashboard">
+      {/* Медленное сияние за всей страницей (см. .sw-aurora). */}
+      <div className="sw-aurora" aria-hidden="true"><i /><i /><i /></div>
       {/* Header */}
       <header className="border-b sw-border-c sticky top-0 z-20 sw-glass">
         <div className="max-w-6xl mx-auto px-6 sm:px-8 py-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <img src={logo} alt="" className="w-9 h-9 rounded-lg" draggable={false} />
+            <span className="sw-logo">
+              <img src={logo} alt="" className="w-9 h-9 rounded-lg" draggable={false} />
+            </span>
             <span className="sw-display text-xl tracking-tight">BlueGem</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center rounded-full border sw-border-c overflow-hidden mr-1" data-testid="lang-switch">
-              {LANGUAGES.map((option) => (
-                <button
-                  key={option.id}
-                  data-testid={`lang-${option.id}`}
-                  onClick={() => setLanguage(option.id)}
-                  title={option.label}
-                  className="px-2.5 py-1 text-[11px] font-semibold tracking-wide transition-colors"
-                  style={{
-                    background: lang === option.id ? "var(--sw-accent)" : "transparent",
-                    color: lang === option.id ? "var(--sw-accent-fg)" : "var(--sw-text-dim)",
-                  }}
-                >
-                  {option.short}
-                </button>
-              ))}
-            </div>
+            <LanguageSwitch lang={lang} />
             <input ref={fileRef} type="file" accept=".bgproj,.swproj,application/json,.json" onChange={onImportFile} className="hidden" />
             {/* Обновления и письмо автору: единственное место, где приложение
                 говорит о себе самом, — шапка главной. */}
@@ -233,7 +294,7 @@ export default function Dashboard() {
             <Button
               data-testid="new-project-btn"
               onClick={() => setOpen(true)}
-              className="rounded-full sw-accent-bg sw-accent-fg hover:opacity-90 transition-opacity gap-2 border-0"
+              className="sw-shine rounded-full sw-accent-bg sw-accent-fg hover:opacity-90 transition-opacity gap-2 border-0"
             >
               <Plus className="w-4 h-4" /> {t("dashboard.newProject")}
             </Button>
@@ -243,18 +304,31 @@ export default function Dashboard() {
 
       {/* Hero */}
       <div className="max-w-6xl mx-auto px-6 sm:px-8 pt-16 pb-10">
-        <p className="text-xs uppercase tracking-[0.3em] sw-text-dim mb-4">{t("dashboard.tagline")}</p>
-        <h1 className="sw-display text-4xl sm:text-5xl tracking-tight max-w-2xl leading-tight">
-          {t("dashboard.heroTitle")}
-        </h1>
-        <p className="sw-text-dim mt-4 max-w-xl leading-relaxed">
-          {t("dashboard.heroText")}
-        </p>
+        {/* Герой появляется строка за строкой (--d — задержка строки), а по
+            заголовку один раз проходит блик акцента. Ключ по языку: сменили
+            язык — новый текст входит заново, а не подменяется на месте. */}
+        <div key={lang}>
+          <p className="sw-reveal text-xs uppercase tracking-[0.3em] sw-text-dim mb-4" style={{ "--d": "40ms" }}>
+            {t("dashboard.tagline")}
+          </p>
+          <h1 className="sw-shine-text sw-display text-4xl sm:text-5xl tracking-tight max-w-2xl leading-tight" style={{ "--d": "120ms" }}>
+            {t("dashboard.heroTitle")}
+          </h1>
+          <p className="sw-reveal sw-text-dim mt-4 max-w-xl leading-relaxed" style={{ "--d": "220ms" }}>
+            {t("dashboard.heroText")}
+          </p>
+        </div>
         {projects.length > 0 && (
-          <div className="mt-6 flex flex-wrap items-center gap-5 text-sm sw-text-dim">
-            <span className="flex items-center gap-1.5"><BookOpen className="w-4 h-4" /> {t("count.projects", { count: projects.length })}</span>
-            <span className="flex items-center gap-1.5"><Network className="w-4 h-4" /> {t("count.nodes", { count: totals.nodes })}</span>
-            <span className="flex items-center gap-1.5"><Link2 className="w-4 h-4" /> {t("count.edges", { count: totals.edges })}</span>
+          <div className="sw-reveal mt-6 flex flex-wrap items-center gap-5 text-sm sw-text-dim" style={{ "--d": "320ms" }}>
+            <CountUp value={projects.length}>
+              {(n) => <span className="sw-count flex items-center gap-1.5"><BookOpen className="w-4 h-4" /> {t("count.projects", { count: n })}</span>}
+            </CountUp>
+            <CountUp value={totals.nodes}>
+              {(n) => <span className="sw-count flex items-center gap-1.5"><Network className="w-4 h-4" /> {t("count.nodes", { count: n })}</span>}
+            </CountUp>
+            <CountUp value={totals.edges}>
+              {(n) => <span className="sw-count flex items-center gap-1.5"><Link2 className="w-4 h-4" /> {t("count.edges", { count: n })}</span>}
+            </CountUp>
           </div>
         )}
       </div>
@@ -310,17 +384,20 @@ export default function Dashboard() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {visible.map((p, i) => (
-              <motion.div
-                key={p.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(i * 0.04, 0.3), duration: 0.35 }}
+              // Две коробки: внешняя — место в сетке, framer двигает её при
+              // пересортировке; внутренняя — сама карточка со своим подъёмом
+              // на наведении. На одной коробке framer затирал бы transform
+              // наведения своим inline-стилем.
+              <motion.div key={p.id} layout="position" transition={CARD_LAYOUT}>
+              <div
                 onClick={() => navigate(`/project/${p.id}`)}
+                onPointerMove={trackPointer}
                 data-testid={`project-card-${p.id}`}
-                className="group relative border sw-raised sw-border-c rounded-xl p-6 cursor-pointer hover:-translate-y-1 transition-all duration-200 hover:border-[var(--sw-accent)]"
+                className="sw-project-card sw-card-in group relative h-full border sw-raised sw-border-c rounded-xl p-6 cursor-pointer"
+                style={{ "--d": `${Math.min(i * 55, 440)}ms` }}
               >
                 <div className="flex items-start justify-between mb-4">
-                  <div className="w-10 h-10 rounded-lg border sw-border-c flex items-center justify-center">
+                  <div className="sw-project-icon w-10 h-10 rounded-lg border sw-border-c flex items-center justify-center">
                     <BookOpen className="w-5 h-5 sw-accent-text" />
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
@@ -363,8 +440,8 @@ export default function Dashboard() {
                     data-testid={`project-mix-${p.id}`}
                     title={t("dashboard.typeMix", { count: p.nodeCount || 0 })}
                   >
-                    {p.typeMix.map((m, i) => (
-                      <span key={`${m.color}-${i}`} style={{ flex: m.count, background: m.color }} />
+                    {p.typeMix.map((m, j) => (
+                      <span key={`${m.color}-${j}`} style={{ flex: m.count, background: m.color, "--i": j }} />
                     ))}
                   </div>
                 )}
@@ -373,9 +450,10 @@ export default function Dashboard() {
                   <span className="flex items-center gap-1"><Link2 className="w-3 h-3" />{p.edgeCount || 0}</span>
                   <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{relativeTime(p.updatedAt, t, lang)}</span>
                 </div>
-                <div className="mt-3 flex items-center gap-2 text-sm sw-accent-text opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="sw-project-open mt-3 flex items-center gap-2 text-sm sw-accent-text">
                   {t("dashboard.openProject")} <ArrowRight className="w-4 h-4" />
                 </div>
+              </div>
               </motion.div>
             ))}
           </div>
@@ -450,9 +528,19 @@ export default function Dashboard() {
 function EmptyState({ onCreate, onImport }) {
   const t = useT();
   return (
-    <div className="border border-dashed sw-border-c rounded-xl py-20 flex flex-col items-center text-center">
-      <div className="w-14 h-14 rounded-lg border sw-border-c flex items-center justify-center mb-5">
-        <Network className="w-7 h-7 sw-text-dim" />
+    <div className="sw-reveal border border-dashed sw-border-c rounded-xl py-16 flex flex-col items-center text-center">
+      {/* Будущий мир: узлы разных типов кружат вокруг пустого холста. */}
+      <div className="sw-orbit" aria-hidden="true">
+        <span className="sw-orbit-ring">
+          <b style={{ "--c": "#E8465E" }} /><b style={{ "--c": "#17A46F" }} /><b style={{ "--c": "#9A63E8" }} />
+        </span>
+        <span className="sw-orbit-ring is-inner">
+          <b style={{ "--c": "#C98122" }} /><b style={{ "--c": "#2E9BD6" }} />
+        </span>
+        <span className="sw-orbit-pulse" />
+        <span className="sw-orbit-core">
+          <Network className="w-7 h-7 sw-accent-text" />
+        </span>
       </div>
       <h3 className="sw-display text-2xl tracking-tight mb-2">{t("dashboard.emptyTitle")}</h3>
       <p className="sw-text-dim text-sm max-w-sm mb-6">
@@ -462,7 +550,7 @@ function EmptyState({ onCreate, onImport }) {
         <Button
           data-testid="empty-create-btn"
           onClick={onCreate}
-          className="rounded-full sw-accent-bg sw-accent-fg border-0 hover:opacity-90 gap-2"
+          className="sw-shine rounded-full sw-accent-bg sw-accent-fg border-0 hover:opacity-90 gap-2"
         >
           <Plus className="w-4 h-4" /> {t("dashboard.createFirst")}
         </Button>

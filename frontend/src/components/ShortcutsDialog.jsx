@@ -58,14 +58,14 @@ export default function ShortcutsDialog({ open, onClose }) {
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/45 backdrop-blur-sm"
+      className="sw-overlay-in fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/45 backdrop-blur-sm"
       onClick={onClose}
       data-testid="shortcuts-dialog"
     >
       <motion.div
-        initial={{ opacity: 0, scale: 0.97 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+        initial={{ opacity: 0, y: 14, scale: 0.96, filter: "blur(4px)" }}
+        animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+        transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-lg rounded-xl border sw-border-c sw-panel overflow-hidden"
       >
@@ -78,8 +78,9 @@ export default function ShortcutsDialog({ open, onClose }) {
           </button>
         </div>
         <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
-          {GROUPS.map((group) => (
-            <div key={group.id}>
+          {/* Группы входят лесенкой вслед за окном. */}
+          {GROUPS.map((group, gi) => (
+            <div key={group.id} className="sw-palette-enter" style={{ animationDelay: `${80 + gi * 50}ms` }}>
               <p className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim mb-2">
                 {t(`shortcuts.${group.id}`)}
               </p>

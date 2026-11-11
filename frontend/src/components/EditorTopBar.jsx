@@ -36,7 +36,7 @@ export default function EditorTopBar({
   };
 
   return (
-    <header className="sw-topbar" data-testid="editor-topbar">
+    <header className="sw-topbar sw-topbar-in" data-testid="editor-topbar">
       <div className="sw-topbar-left">
         <button
           type="button"
@@ -58,7 +58,7 @@ export default function EditorTopBar({
         </button>
         <h1 className="sw-topbar-project" title={projectName}>{projectName}</h1>
         <span className="sw-topbar-sep" aria-hidden="true" />
-        <ScrollStrip activeKey={activeCanvas} className="sw-topbar-tabs" data-testid="canvas-strip">
+        <ScrollStrip activeKey={activeCanvas} thumb className="sw-topbar-tabs" data-testid="canvas-strip">
           {canvases.map((c) => renderCanvasTab(c, `canvas-tab-${c.id}`))}
         </ScrollStrip>
         <button
