@@ -94,7 +94,7 @@ function TypeTile({ type, onPick }) {
   );
 }
 
-export function CreateSheet({ types, onCreate, onCreateType, onAddCanvas, onClose }) {
+export function CreateSheet({ types, templates = [], onCreate, onCreateFromTemplate, onCreateType, onAddCanvas, onClose }) {
   const t = useT();
   return (
     <Sheet onClose={onClose} testId="create-sheet" label={t("editor.create")}>
@@ -106,6 +106,23 @@ export function CreateSheet({ types, onCreate, onCreateType, onAddCanvas, onClos
           {types.map((type) => <TypeTile key={type.id} type={type} onPick={onCreate} />)}
           <NewTypeTile onPick={onCreateType} />
         </div>
+        {templates.length > 0 && (
+          <>
+            <p className="sw-sheet-sub">{t("templates.title")}</p>
+            <div className="sw-create-grid" data-testid="create-templates">
+              {templates.map((tpl) => {
+                const type = types.find((x) => x.id === tpl.typeId) || {};
+                return (
+                  <TypeTile
+                    key={tpl.id}
+                    type={{ id: tpl.id, label: tpl.label, color: type.color, icon: type.icon }}
+                    onPick={() => onCreateFromTemplate(tpl)}
+                  />
+                );
+              })}
+            </div>
+          </>
+        )}
         <CreateRow onAddCanvas={onAddCanvas} />
       </div>
     </Sheet>

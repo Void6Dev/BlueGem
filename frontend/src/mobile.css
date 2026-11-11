@@ -1189,3 +1189,13 @@
 }
 .sw-mdesc-input:focus,
 .sw-mdesc-input:focus-visible { outline: none !important; box-shadow: none !important; border: 0 !important; }
+
+/* Подзаголовок внутри шторки: «Шаблоны» под плитками типов. */
+.sw-is-mobile .sw-sheet-sub, .sw-sheet-sub {
+  margin: 14px 2px 8px;
+  font-size: 11px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--sw-text-dim);
+  font-weight: 600;
+}

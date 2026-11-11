@@ -15,7 +15,7 @@ import {
   ChevronDown, ChevronUp, Minus, FileJson, FileText as FileTextIcon, Undo2,
   Link2, Unlink, Crosshair, Target, ArrowLeftRight, Pencil, Copy, Trash2,
   SquareDashedMousePointer, Spline, Waypoints, Scissors, Shapes,
-  LayoutGrid, MoveHorizontal, Anchor, ClipboardPaste, Minimize2, Map as MapIcon, Eye, MoreHorizontal,
+  LayoutGrid, MoveHorizontal, Anchor, ClipboardPaste, Minimize2, Map as MapIcon, Eye, MoreHorizontal, Bookmark, BookmarkPlus,
 } from "lucide-react";
 import { api, apiErrorMessage } from "@/lib/api";
 import {
@@ -28,6 +28,7 @@ import { pushEntry } from "@/lib/history";
 import { downloadJson, downloadMarkdown } from "@/lib/exporters";
 import { nodeBody } from "@/lib/search";
 import { backlinksOf } from "@/lib/backlinks";
+import { makeTemplate, nodeFromTemplate, templatesOf } from "@/lib/nodeTemplates";
 import CustomNode, { FAR_ZOOM } from "@/components/CustomNode";
 import NodePreview from "@/components/NodePreview";
 import EditorTopBar from "@/components/EditorTopBar";
@@ -812,6 +813,33 @@ function EditorInner() {
     }
     // eslint-disable-next-line
   }, [id, typesById, activeCanvas, rfNodes.length, centerOfView, mapNode]);
+
+  /* ---------------- свои шаблоны узлов ---------------- */
+
+  const nodeTemplates = useMemo(() => templatesOf(settings), [settings]);
+
+  const saveAsTemplate = useCallback((data) => {
+    if (!data || !settings) return;
+    const tpl = makeTemplate(data, data.title || tr("common.untitled"));
+    changeSettings({ ...settings, nodeTemplates: [...templatesOf(settings), tpl] });
+    toast.success(tr("templates.saved", { name: tpl.label }));
+  }, [settings, changeSettings, tr]);
+
+  const addFromTemplate = useCallback((tpl, position) => (
+    addNode(tpl.typeId, position, nodeFromTemplate(tpl))
+  ), [addNode]);
+
+  /** Пункты «из шаблона» для меню создания; пусто — шаблонов нет. */
+  const templateItems = useCallback((position, prefix) => (nodeTemplates.length ? [
+    { id: `sep-${prefix}-tpl`, separator: true },
+    ...nodeTemplates.map((tpl) => ({
+      id: `${prefix}-tpl-${tpl.id}`,
+      label: tpl.label,
+      icon: Bookmark,
+      swatch: typesById[tpl.typeId]?.color,
+      onSelect: () => addFromTemplate(tpl, position),
+    })),
+  ] : []), [nodeTemplates, typesById, addFromTemplate]);
 
   const duplicateNode = useCallback(async (src) => {
     if (!src) return;
@@ -2349,17 +2377,18 @@ function EditorInner() {
         },
         { id: "sep-node2", separator: true },
         { id: "dup", label: tr("ctx.duplicate"), icon: Copy, hint: "Ctrl D", onSelect: () => duplicateNode(node.data) },
+        { id: "save-tpl", label: tr("templates.saveAs"), icon: BookmarkPlus, onSelect: () => saveAsTemplate(node.data) },
         { id: "focus", label: tr("ctx.center"), icon: Target, onSelect: () => focusNode(node.id) },
         ...(canvases.length > 1
           ? [{ id: "move-canvas", label: tr("ctx.moveToCanvas"), icon: Layers, items: canvasItems([node]) }]
           : []),
         { id: "sep-del", separator: true },
         { id: "del", label: tr("ctx.deleteNode"), icon: Trash2, danger: true, onSelect: () => deleteNode(node.id) },
-      ], ["open", "node-type", "link-new", "dup", "move-canvas", "del"]),
+      ], ["open", "node-type", "link-new", "dup", "save-tpl", "move-canvas", "del"]),
     });
   }, [rfEdges, nodeTitles, typeItems, canvasItems, cardModeItems, canvases.length, settings, changeNodeType,
       openNodeById, addConnectedNode, deleteSelectedEdge, unlinkAll, duplicateNode, focusNode, deleteNode,
-      resizeNode, peekNode, forPhone]);
+      resizeNode, peekNode, forPhone, saveAsTemplate]);
 
   // Список в панели знает про узел только его id — сам узел спрашиваем здесь.
   // Так список не зависит от объектов React Flow и переживает перенос карточек
@@ -2456,6 +2485,7 @@ function EditorInner() {
           icon: Plus,
           items: [
             ...typeItems((t) => addNode(t, position), "new"),
+            ...templateItems(position, "new"),
             { id: "sep-new-type", separator: true },
             { id: "make-type", label: tr("ctx.newType"), icon: Shapes, onSelect: createNodeType },
           ],
@@ -2494,7 +2524,7 @@ function EditorInner() {
       ], ["new-here", "paste", "layout", "fit"]),
     });
   }, [rf, typeItems, addNode, runLayout, selectAllVisible, closeAll, createNodeType,
-      pasteNodes, undo, addCanvas, settings, changeSettings, mobile, forPhone]);
+      pasteNodes, undo, addCanvas, settings, changeSettings, mobile, forPhone, templateItems]);
 
   const openSelectionMenu = useCallback((e, nodes) => {
     e.preventDefault();
@@ -2528,8 +2558,8 @@ function EditorInner() {
    * имени, выделенном целиком, — остаётся напечатать. Три касания от мысли до
    * записанного персонажа: «+», плитка типа, клавиатура.
    */
-  const mobileCreate = useCallback(async (typeId) => {
-    const node = await addNode(typeId);
+  const mobileCreate = useCallback(async (typeId, extra) => {
+    const node = await addNode(typeId, undefined, extra);
     if (!node) return;
     haptic("medium");
     setPreviewId(null);
@@ -2578,6 +2608,12 @@ function EditorInner() {
       icon: Plus,
       run: () => addNode(t.id),
     })),
+    ...nodeTemplates.map((tpl) => ({
+      id: `new-tpl-${tpl.id}`,
+      label: tr("templates.newFrom", { name: tpl.label }),
+      icon: Bookmark,
+      run: () => addFromTemplate(tpl),
+    })),
     { id: "new-type", label: tr("palette.newType"), icon: Shapes, run: createNodeType },
     { id: "layout", label: tr("palette.layoutLayered"), hint: "L", icon: Wand2, run: () => runLayout("layered") },
     { id: "layout-grid", label: tr("palette.layoutGrid"), icon: Wand2, run: () => runLayout("grid") },
@@ -2590,7 +2626,8 @@ function EditorInner() {
     { id: "undo", label: tr("palette.undo"), hint: "Ctrl+Z", icon: Undo2, run: undo },
     { id: "shortcuts", label: tr("palette.shortcuts"), hint: "?", icon: Keyboard, run: () => setShowShortcuts(true) },
     { id: "home", label: tr("palette.home"), icon: ArrowLeft, run: () => navigate("/") },
-  ], [settings, addNode, runLayout, rf, closeAll, exportAs, undo, navigate, tr, createNodeType]);
+  ], [settings, addNode, runLayout, rf, closeAll, exportAs, undo, navigate, tr, createNodeType,
+      nodeTemplates, addFromTemplate]);
 
   // Как и allNodesForPicker: пока палитра закрыта, её список не нужен никому,
   // а стоит он объекта и замыкания на каждый узел проекта — на каждую правку.
@@ -3470,7 +3507,9 @@ function EditorInner() {
       {mobile && mSheet === "create" && (
         <CreateSheet
           types={settings.nodeTypes || []}
-          onCreate={mobileCreate}
+          templates={nodeTemplates}
+          onCreate={(typeId) => mobileCreate(typeId)}
+          onCreateFromTemplate={(tpl) => mobileCreate(tpl.typeId, nodeFromTemplate(tpl))}
           onCreateType={createNodeType}
           onAddCanvas={() => { addCanvas(); setMSheet("canvases"); }}
           onClose={() => setMSheet(null)}

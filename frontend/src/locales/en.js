@@ -388,10 +388,12 @@ const en = {
     title: "Settings",
     sectionAppearance: "Appearance",
     sectionRelations: "Links",
+    sectionTemplates: "Node templates",
     sectionBackups: "Backups",
     sectionChronology: "Chronology",
     fieldKeysOfType: "Field suggestions",
     about: {
+      templates: "Your own node blueprints. Save them from a node’s menu, create from the canvas menu, the Ctrl+K palette or the “+” button on a phone.",
       backups: "Snapshots of the project you can go back to. The last 12 are kept, plus one per day for a month.",
       project: "The project name and description, as shown on the home screen.",
       appearance: "Language, theme, accent colour and fonts. The language applies to the whole app.",
@@ -452,6 +454,15 @@ const en = {
     fieldTemplates: "Suggested characteristics",
     fieldTemplatesHint: "What a node offers to fill in with one click — per node type.",
     fieldKeyPlaceholder: "Add a suggestion and press Enter",
+  },
+
+  templates: {
+    title: "Templates",
+    saveAs: "Save as template",
+    saved: "Template “{name}” saved — it now appears in the create menu",
+    newFrom: "New node from template: {name}",
+    empty: "No templates yet. Save any node as a template: right-click a card → “Save as template”. Its type, description, fields and tags go into the template.",
+    fields: ["{count} field", "{count} fields"],
   },
 
   backups: {
