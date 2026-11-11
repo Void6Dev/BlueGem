@@ -55,6 +55,79 @@
 .sw-lmd .cm-content ::selection { background: color-mix(in srgb, var(--sw-accent) 26%, transparent) !important; }
 .sw-lmd .cm-placeholder { color: var(--sw-text-mute); font-style: normal; }
 
+/* Общее кольцо :focus-visible (index.css) ложилось на само поле CodeMirror —
+   а оно высотой в текст, и на пустом описании рамка обнимала одну строку
+   посреди экрана. Рамку рисует контейнер (.sw-desc-box, большой блокнот). */
+.sw-lmd .cm-content:focus-visible { box-shadow: none; border-radius: 0; }
+
+/* ---------------- номера и линии строк (компьютер) ----------------
+   Слева — номер строки, под каждой строкой — тонкая линия: видно, где
+   кончается одна строка и начинается другая, даже когда длинный абзац
+   перенесён на несколько рядов. Линия идёт и под номером, поэтому номер
+   однозначно привязан к своей строке. Строка с курсором подсвечена вместе
+   с номером. CodeMirror сам меряет высоту каждой строки и выравнивает по ней
+   колонку номеров, так что заголовки и списки не сбивают счёт. */
+.sw-lmd {
+  --lmd-rule: color-mix(in srgb, var(--sw-border) 55%, transparent);
+  --lmd-fs: 14.5px;
+  --lmd-row: calc(var(--lmd-fs) * 1.68);
+}
+.sw-lmd.is-large { --lmd-fs: 17px; --lmd-row: calc(var(--lmd-fs) * 1.75); }
+.sw-lmd.has-lines .cm-line { border-bottom: 1px solid var(--lmd-rule); }
+.sw-lmd .cm-gutters {
+  background: transparent;
+  border: 0;
+  color: var(--sw-text-mute);
+  font-family: var(--sw-font-mono);
+  font-size: 11px;
+}
+.sw-lmd .cm-lineNumbers .cm-gutterElement {
+  min-width: 34px;
+  padding: 0 12px 0 4px;
+  /* Номер стоит на первом ряду своей строки, а не прижат к её верху. */
+  line-height: var(--lmd-row);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--lmd-rule);
+}
+.sw-lmd .cm-activeLine,
+.sw-lmd .cm-activeLineGutter { background: transparent; }
+.sw-lmd .cm-focused .cm-activeLine { background: color-mix(in srgb, var(--sw-accent) 6%, transparent); }
+.sw-lmd .cm-focused .cm-activeLineGutter {
+  color: var(--sw-accent);
+  background: color-mix(in srgb, var(--sw-accent) 6%, transparent);
+}
+/* Отступ текста — внутри строки, а не у поля: так линия под строкой
+   продолжает линию под её номером без разрыва. */
+.sw-lmd.has-lines .cm-content { padding-left: 0; padding-right: 0; }
+.sw-lmd.has-lines .cm-line { padding-left: 10px; padding-right: 8px; }
+/* Номер заголовка — на первом ряду заголовка: отступ сверху и высота ряда
+   те же, что у самого заголовка (см. .cm-md-h1…h3 выше). */
+.sw-lmd .cm-gutterElement.is-h1 { padding-top: calc(var(--lmd-fs) * 1.55 * 0.45); line-height: calc(var(--lmd-fs) * 1.55 * 1.3); }
+.sw-lmd .cm-gutterElement.is-h2 { padding-top: calc(var(--lmd-fs) * 1.3 * 0.4); line-height: calc(var(--lmd-fs) * 1.3 * 1.3); }
+.sw-lmd .cm-gutterElement.is-h3 { padding-top: calc(var(--lmd-fs) * 1.12 * 0.3); line-height: calc(var(--lmd-fs) * 1.12 * 1.3); }
+.sw-lmd .cm-gutterElement.is-h4,
+.sw-lmd .cm-gutterElement.is-h5,
+.sw-lmd .cm-gutterElement.is-h6 { line-height: calc(var(--lmd-fs) * 1.3); }
+
+/* Большой блокнот (на весь экран): рамка — по краям рабочей области, во всю
+   её высоту, а не вокруг набранного текста. Щелчок в любом месте рамки
+   ставит курсор: редактор растянут на неё целиком. */
+.sw-lmd.is-large .sw-lmd-host {
+  border-radius: 12px;
+  border: 1px solid var(--sw-border);
+  background: color-mix(in srgb, var(--sw-bg) 55%, transparent);
+  transition: border-color 0.16s var(--sw-ease), box-shadow 0.16s var(--sw-ease);
+}
+.sw-lmd.is-large .sw-lmd-host:focus-within {
+  border-color: color-mix(in srgb, var(--sw-accent) 60%, var(--sw-border));
+  box-shadow: var(--sw-ring);
+}
+.sw-lmd.is-large .cm-editor { min-height: 100%; }
+.sw-lmd.is-large .cm-content { padding-top: 14px; padding-bottom: 24px; }
+.sw-lmd.is-large:not(.has-lines) .cm-content { padding-left: 18px; padding-right: 18px; }
+.sw-lmd.is-large .cm-lineNumbers .cm-gutterElement { font-size: 12px; }
+
 /* Заголовки — шрифтом заголовков, с воздухом сверху: так текст делится на
    части с одного взгляда. */
 .sw-lmd .cm-md-h1, .sw-lmd .cm-md-h2, .sw-lmd .cm-md-h3,
