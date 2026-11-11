@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TextField } from "@/components/ui/text-field";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
   Plus, BookOpen, Trash2, Network, ArrowRight, Search, Upload, Copy,
-  Pencil, Link2, Clock,
+  Pencil, Link2, Clock, MoreVertical, ArrowUpDown, Share2, Languages,
 } from "lucide-react";
+import ContextMenu from "@/components/ContextMenu";
+import { downloadJson } from "@/lib/exporters";
+import { haptic, useIsMobile } from "@/lib/platform";
 import { Segmented } from "@/components/ui/segmented";
 import CreateProjectDialog from "@/components/CreateProjectDialog";
 import { api, apiErrorMessage } from "@/lib/api";
@@ -77,6 +81,20 @@ function trackPointer(e) {
   el.style.setProperty("--my", `${e.clientY - r.top}px`);
 }
 
+/**
+ * Снимает класс входа, когда карточка (и полоска состава в ней) доиграла.
+ * Без этого вход повторялся: при пересортировке React переставляет узлы в
+ * DOM, а браузер на каждую перестановку запускает CSS-анимацию заново —
+ * карточки гасли и всплывали прямо посреди переезда.
+ */
+function finishEntrance(e) {
+  const el = e.currentTarget;
+  if (!el.classList.contains("sw-card-in")) return;
+  const running = el.getAnimations?.({ subtree: true })
+    .some((a) => a.animationName && a.playState === "running");
+  if (!running) el.classList.remove("sw-card-in");
+}
+
 /** Переключатель языка: выбранный язык подсвечивает ползунок, который
  *  переезжает к нажатому, а не перекрашивает кнопку на месте. */
 function LanguageSwitch({ lang }) {
@@ -129,6 +147,9 @@ export default function Dashboard() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("updated");
   const fileRef = useRef(null);
+  // Телефон: свой первый экран — сразу миры, а не рассказ о программе.
+  const mobile = useIsMobile();
+  const [menu, setMenu] = useState(null);
 
   useEffect(() => {
     // Reuse the appearance the user last saw instead of forcing dark.
@@ -210,6 +231,67 @@ export default function Dashboard() {
     }
   };
 
+  /** Файл проекта — системным «Поделиться» на телефоне, загрузкой в браузере. */
+  const shareProject = async (p) => {
+    try {
+      const res = await downloadJson(await api.exportProject(p.id));
+      if (res?.canceled) return;
+      toast.success(t("editor.toasts.exported", { where: res?.path ? ` → ${res.path}` : "" }));
+    } catch (e) {
+      toast.error(e?.message || apiErrorMessage(e, "errors.export"));
+    }
+  };
+
+  /** Меню проекта: «⋯» на карточке или долгое нажатие на ней. */
+  const openProjectMenu = (p, at) => {
+    haptic("light");
+    setMenu({
+      x: at?.x || 0,
+      y: at?.y || 0,
+      header: p.name,
+      items: [
+        { id: "p-open", label: t("dashboard.openProject"), icon: ArrowRight, onSelect: () => navigate(`/project/${p.id}`) },
+        { id: "p-rename", label: t("dashboard.rename"), icon: Pencil, onSelect: () => setEditTarget({ ...p }) },
+        { id: "p-dup", label: t("dashboard.duplicate"), icon: Copy, onSelect: () => duplicate(p) },
+        { id: "p-share", label: t("mobile.shareProject"), icon: Share2, onSelect: () => shareProject(p) },
+        { id: "p-sep", separator: true },
+        { id: "p-del", label: t("dashboard.remove"), icon: Trash2, danger: true, onSelect: () => setDeleteTarget(p) },
+      ],
+    });
+  };
+
+  const openSortMenu = () => setMenu({
+    x: 0,
+    y: 0,
+    header: t("mobile.sortBy"),
+    items: SORT_IDS.map((id) => ({
+      id: `sort-${id}`,
+      label: t(`dashboard.sort.${id}`),
+      checked: sort === id,
+      onSelect: () => setSort(id),
+    })),
+  });
+
+  const openAppMenu = () => setMenu({
+    x: 0,
+    y: 0,
+    header: "BlueGem",
+    items: [
+      { id: "app-import", label: t("dashboard.import"), icon: Upload, onSelect: importProject },
+      {
+        id: "app-lang",
+        label: t("mobile.language"),
+        icon: Languages,
+        items: LANGUAGES.map((option) => ({
+          id: `lang-${option.id}`,
+          label: option.label,
+          checked: lang === option.id,
+          onSelect: () => setLanguage(option.id),
+        })),
+      },
+    ],
+  });
+
   /** Общий финал для всех способов открыть файл проекта. */
   const acceptSnapshot = async (snapshot) => {
     const result = await openSnapshot(snapshot);
@@ -262,6 +344,200 @@ export default function Dashboard() {
     (a, p) => ({ nodes: a.nodes + (p.nodeCount || 0), edges: a.edges + (p.edgeCount || 0) }),
     { nodes: 0, edges: 0 }
   ), [projects]);
+
+  // Переименование и удаление — одни и те же на обеих раскладках.
+  function renderDialogs() {
+    return (
+      <>
+      {/* Rename dialog */}
+      <Dialog open={!!editTarget} onOpenChange={(v) => !v && setEditTarget(null)}>
+        <DialogContent className="sw-surface sw-border-c" data-testid="edit-project-dialog">
+          <DialogHeader>
+            <DialogTitle className="sw-display text-2xl">{t("dashboard.editTitle")}</DialogTitle>
+            <DialogDescription className="sw-text-dim">{t("dashboard.editText")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <Input
+              data-testid="edit-project-name"
+              value={editTarget?.name || ""}
+              onChange={(e) => setEditTarget((t) => ({ ...t, name: e.target.value }))}
+              onKeyDown={(e) => e.key === "Enter" && saveEdit()}
+              className="bg-transparent sw-border-c"
+              autoFocus
+            />
+            <Textarea
+              data-testid="edit-project-desc"
+              value={editTarget?.description || ""}
+              onChange={(e) => setEditTarget((t) => ({ ...t, description: e.target.value }))}
+              rows={3}
+              className="bg-transparent sw-border-c resize-none"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditTarget(null)}>{t("common.cancel")}</Button>
+            <Button data-testid="save-project-edit" onClick={saveEdit} className="sw-accent-bg sw-accent-fg border-0 hover:opacity-90">
+              {t("common.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
+        <AlertDialogContent className="sw-surface sw-border-c">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("dashboard.deleteTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("dashboard.deleteText", {
+                name: deleteTarget?.name,
+                nodes: t("count.nodes", { count: deleteTarget?.nodeCount || 0 }),
+                edges: t("count.edges", { count: deleteTarget?.edgeCount || 0 }),
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="confirm-delete-project"
+              onClick={remove}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {t("common.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      </>
+    );
+  }
+
+  if (mobile) {
+    return (
+      <div className="min-h-screen sw-bg pb-32" data-testid="dashboard">
+        <input ref={fileRef} type="file" onChange={onImportFile} className="hidden" />
+        <header className="sw-dash-header sticky top-0 z-20 sw-mdash-head">
+          <div className="flex items-center gap-2.5 px-4 h-14">
+            <img src={logo} alt="" className="w-8 h-8 rounded-[10px]" draggable={false} />
+            <span className="sw-display text-lg tracking-tight flex-1">BlueGem</span>
+            <UpdateCenter />
+            <button type="button" className="sw-icon-btn" onClick={importProject} data-testid="import-project-btn" aria-label={t("dashboard.import")}>
+              <Upload className="w-5 h-5" />
+            </button>
+            <button type="button" className="sw-icon-btn" onClick={openAppMenu} data-testid="app-menu-btn" aria-label={t("mobile.more")}>
+              <MoreVertical className="w-5 h-5" />
+            </button>
+          </div>
+        </header>
+
+        <div className="px-5 pt-5 pb-4">
+          {/* Тот же вход, что у героя на компьютере, только без расфокуса —
+              на телефоне его облегчает mobile-ветка .sw-reveal в index.css. */}
+          <h1 key={lang} className="sw-shine-text sw-display text-[34px] leading-[1.1] tracking-tight" style={{ "--d": "40ms" }}>
+            {t("mobile.yourWorlds")}
+          </h1>
+          {projects.length > 0 ? (
+            <p className="sw-reveal sw-count mt-2 text-[13px] sw-text-dim flex flex-wrap gap-x-3 gap-y-1" style={{ "--d": "140ms" }}>
+              <CountUp value={projects.length}>{(n) => <span>{t("count.projects", { count: n })}</span>}</CountUp>
+              <span className="opacity-40">·</span>
+              <CountUp value={totals.nodes}>{(n) => <span>{t("count.nodes", { count: n })}</span>}</CountUp>
+              <span className="opacity-40">·</span>
+              <CountUp value={totals.edges}>{(n) => <span>{t("count.edges", { count: n })}</span>}</CountUp>
+            </p>
+          ) : (
+            <p className="sw-reveal mt-2 text-sm sw-text-dim leading-relaxed" style={{ "--d": "140ms" }}>{t("dashboard.heroText")}</p>
+          )}
+        </div>
+
+        {projects.length > 1 && (
+          <div className="px-4 pb-3 flex items-center gap-2">
+            <div className="sw-msearch flex-1 !m-0">
+              <Search className="sw-msearch-icon" />
+              <TextField
+                data-testid="project-search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t("dashboard.searchPlaceholder")}
+                enterKeyHint="search"
+              />
+            </div>
+            <button type="button" className="sw-icon-btn is-filled !w-[46px] !h-[46px] !rounded-[14px]" onClick={openSortMenu} data-testid="sort-btn" aria-label={t("mobile.sortBy")}>
+              <ArrowUpDown className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+
+        <div className="px-4 space-y-3">
+          {loading ? (
+            [0, 1, 2].map((i) => (
+              <div key={i} className="border sw-border-c rounded-[22px] p-5">
+                <div className="sw-skeleton h-5 w-2/3 mb-3" />
+                <div className="sw-skeleton h-3 w-full mb-2" />
+                <div className="sw-skeleton h-3 w-4/5" />
+              </div>
+            ))
+          ) : projects.length === 0 ? (
+            <EmptyState onCreate={() => setOpen(true)} onImport={importProject} />
+          ) : visible.length === 0 ? (
+            <p className="sw-text-dim text-sm py-12 text-center">{t("dashboard.noMatches", { query })}</p>
+          ) : visible.map((p, i) => (
+            // Как на компьютере: внешняя коробка — место в списке (её двигает
+            // framer при поиске и сортировке), внутренняя — сама карточка.
+            // Раньше framer стоял на карточке, и его inline-transform глушил
+            // active:scale — нажатие не отзывалось.
+            <motion.div key={p.id} layout="position" transition={CARD_LAYOUT}>
+            <div
+              onClick={() => { haptic("tick"); navigate(`/project/${p.id}`); }}
+              onContextMenu={(e) => { e.preventDefault(); openProjectMenu(p); }}
+              onAnimationEnd={finishEntrance}
+              data-testid={`project-card-${p.id}`}
+              className="sw-mcard sw-card-in sw-raised relative border sw-border-c rounded-[22px] p-5 pr-14"
+              style={{ "--d": `${120 + Math.min(i * 60, 420)}ms` }}
+            >
+              <button
+                type="button"
+                className="sw-icon-btn sw-mcard-more"
+                data-testid={`project-more-${p.id}`}
+                onClick={(e) => { e.stopPropagation(); openProjectMenu(p); }}
+                aria-label={t("mobile.more")}
+              >
+                <MoreVertical className="w-5 h-5" />
+              </button>
+              <h3 className="sw-display text-[21px] leading-tight tracking-tight truncate">{p.name}</h3>
+              <p className="sw-text-dim text-sm line-clamp-2 mt-1.5">
+                {p.description || t("common.noDescription")}
+              </p>
+              {p.typeMix?.length > 0 && (
+                <div className="sw-type-mix" data-testid={`project-mix-${p.id}`}>
+                  {p.typeMix.map((m, k) => (
+                    <span key={`${m.color}-${k}`} style={{ flex: m.count, background: m.color, "--i": k }} />
+                  ))}
+                </div>
+              )}
+              <div className="mt-3.5 flex items-center gap-3.5 text-xs font-mono-sw sw-text-dim">
+                <span className="flex items-center gap-1"><Network className="w-3.5 h-3.5" />{p.nodeCount || 0}</span>
+                <span className="flex items-center gap-1"><Link2 className="w-3.5 h-3.5" />{p.edgeCount || 0}</span>
+                <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{relativeTime(p.updatedAt, t, lang)}</span>
+              </div>
+            </div>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Главное действие экрана — под большим пальцем. */}
+        <button
+          type="button"
+          className="sw-fab"
+          onClick={() => { haptic("medium"); setOpen(true); }}
+          data-testid="mobile-new-project"
+        >
+          <Plus /> {t("mobile.newWorld")}
+        </button>
+
+        <CreateProjectDialog open={open} onOpenChange={setOpen} onCreate={create} />
+        {renderDialogs()}
+        <ContextMenu menu={menu} onClose={() => setMenu(null)} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen sw-bg sw-dashboard" data-testid="dashboard">
@@ -392,6 +668,7 @@ export default function Dashboard() {
               <div
                 onClick={() => navigate(`/project/${p.id}`)}
                 onPointerMove={trackPointer}
+                onAnimationEnd={finishEntrance}
                 data-testid={`project-card-${p.id}`}
                 className="sw-project-card sw-card-in group relative h-full border sw-raised sw-border-c rounded-xl p-6 cursor-pointer"
                 style={{ "--d": `${Math.min(i * 55, 440)}ms` }}
@@ -464,63 +741,7 @@ export default function Dashboard() {
           он вырос из пары полей в экран. */}
       <CreateProjectDialog open={open} onOpenChange={setOpen} onCreate={create} />
 
-      {/* Rename dialog */}
-      <Dialog open={!!editTarget} onOpenChange={(v) => !v && setEditTarget(null)}>
-        <DialogContent className="sw-surface sw-border-c" data-testid="edit-project-dialog">
-          <DialogHeader>
-            <DialogTitle className="sw-display text-2xl">{t("dashboard.editTitle")}</DialogTitle>
-            <DialogDescription className="sw-text-dim">{t("dashboard.editText")}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <Input
-              data-testid="edit-project-name"
-              value={editTarget?.name || ""}
-              onChange={(e) => setEditTarget((t) => ({ ...t, name: e.target.value }))}
-              onKeyDown={(e) => e.key === "Enter" && saveEdit()}
-              className="bg-transparent sw-border-c"
-              autoFocus
-            />
-            <Textarea
-              data-testid="edit-project-desc"
-              value={editTarget?.description || ""}
-              onChange={(e) => setEditTarget((t) => ({ ...t, description: e.target.value }))}
-              rows={3}
-              className="bg-transparent sw-border-c resize-none"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditTarget(null)}>{t("common.cancel")}</Button>
-            <Button data-testid="save-project-edit" onClick={saveEdit} className="sw-accent-bg sw-accent-fg border-0 hover:opacity-90">
-              {t("common.save")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
-        <AlertDialogContent className="sw-surface sw-border-c">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("dashboard.deleteTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("dashboard.deleteText", {
-                name: deleteTarget?.name,
-                nodes: t("count.nodes", { count: deleteTarget?.nodeCount || 0 }),
-                edges: t("count.edges", { count: deleteTarget?.edgeCount || 0 }),
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              data-testid="confirm-delete-project"
-              onClick={remove}
-              className="bg-red-600 text-white hover:bg-red-700"
-            >
-              {t("common.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {renderDialogs()}
     </div>
   );
 }

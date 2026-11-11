@@ -1,0 +1,30 @@
+{
+  "appId": "com.bluegem.app",
+  "appName": "BlueGem",
+  "webDir": "build",
+  "backgroundColor": "#0A0A0F",
+  "loggingBehavior": "debug",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css",
+      "style": "DARK"
+    },
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "launchShowDuration": 2500,
+      "backgroundColor": "#0A0A0F",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_INSIDE",
+      "splashFullScreen": false,
+      "splashImmersive": false
+    },
+    "Keyboard": {
+      "resizeOnFullScreen": false
+    }
+  }
+}

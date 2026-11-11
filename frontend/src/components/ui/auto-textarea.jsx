@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { useImeSafe } from "@/lib/useImeSafe";
 
 // Поле ввода, растущее под текст.
 //
@@ -11,7 +12,8 @@ import { cn } from "@/lib/utils";
 // умеет только расти — при удалении текста оно осталось бы прежней высоты.
 
 const AutoTextarea = React.forwardRef(({
-  className, value, minRows = 1, maxRows = 12, onKeyDown, singleLine, ...props
+  className, value, minRows = 1, maxRows = 12, onKeyDown, singleLine,
+  onChange, onCompositionStart, onCompositionEnd, ...props
 }, ref) => {
   const inner = React.useRef(null);
   // Чужой ref не должен отбирать наш: пробрасываем оба на один узел.
@@ -20,6 +22,8 @@ const AutoTextarea = React.forwardRef(({
     if (typeof ref === "function") ref(el);
     else if (ref) ref.current = el;
   }, [ref]);
+  // Поле не спорит с телефонной клавиатурой (см. lib/useImeSafe).
+  const safe = useImeSafe({ value, onChange, onCompositionStart, onCompositionEnd, ref: setRefs });
 
   const resize = React.useCallback(() => {
     const el = inner.current;
@@ -41,9 +45,8 @@ const AutoTextarea = React.forwardRef(({
 
   return (
     <textarea
-      ref={setRefs}
+      {...safe}
       rows={minRows}
-      value={value}
       onKeyDown={(e) => {
         // В однострочном режиме Enter — это «готово», а не перенос строки:
         // в названии узла перевод строки не нужен, но переносить длинное

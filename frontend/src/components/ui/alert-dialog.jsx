@@ -27,7 +27,9 @@ const AlertDialogContent = React.forwardRef(({ className, ...props }, ref) => (
       className={cn(
         // Вход и выход — свои ключевые кадры (.sw-dialog-content в index.css):
         // окно поднимается с расфокуса, а содержимое догоняет его на полшага.
-        "sw-dialog-content fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 sm:rounded-lg",
+        // .sw-dialog — для телефона: там окно становится шторкой снизу со
+        // своим въездом (mobile.css), и он перекрывает настольный.
+        "sw-dialog sw-dialog-content fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 sm:rounded-lg",
         className
       )}
       {...props}
@@ -46,7 +48,7 @@ AlertDialogHeader.displayName = "AlertDialogHeader";
 
 const AlertDialogFooter = ({ className, ...props }) => (
   <div
-    className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)}
+    className={cn("flex flex-col-reverse gap-2 sm:gap-0 sm:flex-row sm:justify-end sm:space-x-2", className)}
     {...props}
   />
 );

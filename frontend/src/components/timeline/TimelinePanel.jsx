@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { TextField } from "@/components/ui/text-field";
 import {
   CalendarRange, ChevronDown, CornerDownLeft, Filter, Link2, Pencil,
   Search, Settings2, X,
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
+import { isMobileNow } from "@/lib/platform";
 import {
   agesDuring, eraAt, formatAt, formatRange, lifespan, startOfYear, yearsBetween,
 } from "@/lib/chrono";
@@ -45,7 +47,9 @@ export default function TimelinePanel({
   const [search, setSearch] = useState("");
   const [groupBy, setGroupBy] = useState("none");
   const [showLinks, setShowLinks] = useState(false);
-  const [railOpen, setRailOpen] = useState(true);
+  // На телефоне фильтры — выдвижная панель поверх списка, и по умолчанию
+  // закрыта: иначе она съела бы половину узкого экрана.
+  const [railOpen, setRailOpen] = useState(() => !isMobileNow());
   const [picked, setPicked] = useState(null);
   const [hovered, setHovered] = useState(null);
   const [cursor, setCursor] = useState(0);
@@ -245,7 +249,7 @@ export default function TimelinePanel({
 
         <label className="tl-search">
           <Search className="w-3.5 h-3.5 sw-text-dim shrink-0" />
-          <input
+          <TextField
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={tr("timeline.search")}
@@ -506,7 +510,7 @@ function GoTo({ eras, onYear, onEra }) {
     <div className="tl-goto">
       <label className="tl-goto-field">
         <CornerDownLeft className="w-3 h-3 sw-text-dim shrink-0" />
-        <input
+        <TextField
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}

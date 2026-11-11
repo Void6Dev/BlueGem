@@ -15,7 +15,9 @@
     "build:backend": "node scripts/build-backend.mjs",
     "build": "node scripts/build.mjs",
     "dist": "node scripts/build.mjs && electron-builder --win nsis portable",
-    "dist:dir": "node scripts/build.mjs && electron-builder --win dir"
+    "dist:dir": "node scripts/build.mjs && electron-builder --win dir",
+    "android": "node scripts/build-android.mjs --open",
+    "android:apk": "node scripts/build-android.mjs --apk"
   },
   "devDependencies": {
     "electron": "^43.3.0",

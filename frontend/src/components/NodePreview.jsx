@@ -32,6 +32,9 @@ const below = (e) => {
 
 export default function NodePreview({
   node, nodes, onOpenEditor, onPeek, onOpenNode, onClose, onLink, onTypeMenu, onMore,
+  // На телефоне превью живёт в шторке внизу экрана, а не рядом с карточкой:
+  // места сбоку от узла там нет, а снизу до него достаёт палец.
+  docked = false,
 }) {
   const t = useT();
   const id = node.id;
@@ -41,14 +44,17 @@ export default function NodePreview({
   // Где карточка на экране — одной строкой, округлённой до пикселя: селектор
   // срабатывает на каждый кадр движения холста, а перерисовывать превью стоит
   // только тогда, когда оно и правда сдвинулось.
+  // В шторке (телефон) положение карточки не нужно — и подписка на каждый
+  // кадр движения холста перерисовывала бы превью всё время панорамирования.
   const box = useStore(useCallback((s) => {
+    if (docked) return "";
     const n = s.nodeLookup.get(id);
     if (!n || n.hidden) return "";
     const p = n.internals.positionAbsolute;
     const [tx, ty, z] = s.transform;
     return [p.x * z + tx, p.y * z + ty, (n.measured?.width || 0) * z, (n.measured?.height || 0) * z, s.width, s.height]
       .map(Math.round).join("|");
-  }, [id]));
+  }, [id, docked]));
 
   // Высота нужна, чтобы прижать превью к низу экрана, а не дать ему уйти
   // под край. Картинка догружается позже разметки — поэтому наблюдатель.
@@ -61,11 +67,11 @@ export default function NodePreview({
     return () => ro.disconnect();
   }, [id]);
 
-  if (!box) return null;
-  const [x, y, w, nh, vw, vh] = box.split("|").map(Number);
+  if (!box && !docked) return null;
+  const [x, y, w, nh, vw, vh] = (box || "0|0|0|0|0|0").split("|").map(Number);
   // Узел целиком ушёл за край — превью за ним не тянется, но и не пропадает:
   // вернули узел в кадр — оно на месте.
-  const off = x + w < 0 || x > vw || y + nh < 0 || y > vh;
+  const off = !docked && (x + w < 0 || x > vw || y + nh < 0 || y > vh);
 
   let left = x + w + GAP;
   if (left + W > vw - EDGE) {
@@ -83,8 +89,8 @@ export default function NodePreview({
     <div
       ref={ref}
       data-testid="node-preview"
-      className="sw-preview sw-typed sw-panel"
-      style={{
+      className={`sw-preview sw-typed ${docked ? "is-docked" : "sw-panel"}`}
+      style={docked ? { "--node-color": color } : {
         left,
         top,
         width: W,

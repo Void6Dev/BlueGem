@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TextField } from "@/components/ui/text-field";
 import { motion } from "framer-motion";
 import { Search, CornerDownLeft } from "lucide-react";
 import { NodeIcon } from "@/components/NodeIcon";
 import { useT } from "@/lib/i18n";
 import { scrollWithin } from "@/lib/scrollWithin";
 import { useSlidingThumb } from "@/lib/useSlidingThumb";
+import { useBackHandler, useIsMobile } from "@/lib/platform";
 
 /**
  * Ctrl+K palette: one input that reaches every node and every command.
@@ -20,6 +22,8 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
   // Строки въезжают лесенкой только при открытии: на каждой букве запроса
   // список пересобирается, и лесенка на каждый символ рябила бы.
   const typedRef = useRef(false);
+  useBackHandler(onClose, open);
+  const mobile = useIsMobile();
 
   useEffect(() => {
     if (open) {
@@ -68,20 +72,22 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
 
   return (
     <div
-      className="sw-overlay-in fixed inset-0 z-50 flex items-start justify-center pt-[12vh] px-4 bg-black/45 backdrop-blur-sm"
+      className="sw-palette-host sw-overlay-in fixed inset-0 z-50 flex items-start justify-center pt-[12vh] px-4 bg-black/45 backdrop-blur-sm"
       onClick={onClose}
       data-testid="command-palette"
     >
       <motion.div
-        initial={{ opacity: 0, y: -14, scale: 0.96, filter: "blur(4px)" }}
-        animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-        transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+        // На телефоне палитра во весь экран: расфокус и масштаб такой
+        // площади на слабом видеочипе стоили бы кадров — только подъём.
+        initial={mobile ? { opacity: 0, y: 24 } : { opacity: 0, y: -14, scale: 0.96, filter: "blur(4px)" }}
+        animate={mobile ? { opacity: 1, y: 0 } : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+        transition={{ duration: mobile ? 0.26 : 0.32, ease: [0.16, 1, 0.3, 1] }}
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-xl rounded-xl border sw-border-c sw-panel overflow-hidden"
       >
         <div className="flex items-center gap-2 px-4 py-3 border-b sw-border-c">
           <Search className="w-4 h-4 sw-text-dim shrink-0" />
-          <input
+          <TextField
             ref={inputRef}
             data-testid="command-palette-input"
             value={q}
@@ -91,6 +97,10 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
             className="flex-1 bg-transparent outline-none text-sm placeholder:text-[var(--sw-text-dim)]"
           />
           <kbd>Esc</kbd>
+          {/* На телефоне Esc нет — закрыть можно кнопкой или системной «назад». */}
+          <button type="button" onClick={onClose} className="sw-palette-close" data-testid="command-palette-close">
+            {t("common.cancel")}
+          </button>
         </div>
 
         <div ref={listRef} className="sw-palette-list sw-thumb-host max-h-[52vh] overflow-y-auto py-2">
