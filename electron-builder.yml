@@ -15,7 +15,9 @@ extraResources:
   - from: frontend/build
     to: app-ui
     filter: ["**/*", "!**/*.map"]
-  - from: backend/dist/bluegem-backend
+  # Встроенный сервер (server/, Rust): один файл, его собирает
+  # scripts/build-backend.mjs. В установке лежит там же, где и раньше.
+  - from: server/dist
     to: backend
 
 npmRebuild: false
@@ -32,8 +34,8 @@ win:
 # Linux: AppImage — один файл, запускается на любом дистрибутиве без
 # установки и умеет обновляться сам (electron/update.js); deb — пакет для
 # Ubuntu, Debian, Mint и родни, с ярлыком в меню и связью с .bgproj.
-# Собирать на Linux: сервер замораживает PyInstaller, а он собирает только
-# под систему, на которой запущен (npm run dist:linux).
+# Собирать на Linux: сервер компилируется под систему, на которой запущена
+# сборка (npm run dist:linux).
 linux:
   icon: build/icon.png
   executableName: bluegem

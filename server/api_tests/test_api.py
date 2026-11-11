@@ -1,6 +1,8 @@
 import base64
 import json
-from datetime import datetime, timedelta, timezone
+import shutil
+
+from conftest import FIXTURES
 
 # 1×1 PNG.
 PNG = base64.b64decode(
@@ -49,7 +51,7 @@ def test_self_link_rejected(client, project):
     assert r.status_code == 400
 
 
-def test_images_are_stored_once_and_inlined_on_export(client, project, srv):
+def test_images_are_stored_once_and_inlined_on_export(client, project):
     pid = project["id"]
     a = add_node(client, pid, image=PNG_URL)
     assert a["image"].startswith("bg-image:")
@@ -73,24 +75,6 @@ def test_image_route_rejects_garbage(client):
     assert client.get("/api/images/" + "0" * 64).status_code == 404
 
 
-def test_legacy_inline_images_migrate(client, project, srv):
-    n = add_node(client, project["id"])
-    with srv.db() as conn:
-        conn.execute("UPDATE nodes SET image = ? WHERE id = ?", (PNG_URL, n["id"]))
-        srv.migrate_inline_images(conn)
-        row = conn.execute("SELECT image FROM nodes WHERE id = ?", (n["id"],)).fetchone()
-    assert row["image"].startswith("bg-image:")
-
-
-def test_gc_drops_unreferenced_images(client, project, srv):
-    n = add_node(client, project["id"], image="data:image/png;base64," + base64.b64encode(PNG + b"x").decode())
-    client.put(f"/api/nodes/{n['id']}", json={"image": ""})
-    with srv.db() as conn:
-        conn.execute("DELETE FROM backups")
-        srv.gc_images(conn)
-        left = conn.execute("SELECT COUNT(*) AS c FROM images WHERE hash = ?",
-                            (n["image"].split(":", 1)[1],)).fetchone()["c"]
-    assert left == 0
 
 
 def test_deletions_leave_marks(client, project):
@@ -133,24 +117,6 @@ def test_identical_backup_is_not_duplicated(client, project):
     second = client.post(f"/api/projects/{pid}/backups").json()
     assert first["id"] == second["id"]
 
-
-def test_backup_retention(srv):
-    now = datetime(2026, 11, 11, 12, tzinfo=timezone.utc)
-    rows = []
-    for i in range(20):  # двадцать копий сегодня, раз в десять минут
-        rows.append({"id": f"t{i}", "createdAt": (now - timedelta(minutes=10 * i)).isoformat()})
-    for d in range(1, 40):  # и по две в день за прошлые дни
-        for h in (9, 18):
-            when = (now - timedelta(days=d)).replace(hour=h)
-            rows.append({"id": f"d{d}-{h}", "createdAt": when.isoformat()})
-    rows.sort(key=lambda r: r["createdAt"], reverse=True)
-    drop = set(srv.backups_to_drop(rows, now))
-    kept = [r for r in rows if r["id"] not in drop]
-    assert all(f"t{i}" in {r['id'] for r in kept} for i in range(12))
-    older = [r for r in kept if not r["id"].startswith("t")]
-    days = [r["createdAt"][:10] for r in older]
-    assert len(days) == len(set(days))  # по одной на день
-    assert all(r["createdAt"] >= (now - timedelta(days=30)).isoformat() for r in older)
 
 
 def test_import_keeps_ids_once(client, project):
@@ -206,14 +172,6 @@ def test_settings_change_moves_meta_stamp(client, project):
     assert client.get(f"/api/projects/{pid}").json()["metaUpdatedAt"] == after
 
 
-def test_delete_project_removes_backups(client, project, srv):
-    pid = project["id"]
-    add_node(client, pid)
-    client.post(f"/api/projects/{pid}/backups")
-    client.delete(f"/api/projects/{pid}")
-    with srv.db() as conn:
-        assert conn.execute("SELECT COUNT(*) AS c FROM backups WHERE projectId = ?", (pid,)).fetchone()["c"] == 0
-
 
 def test_starter_template(client):
     r = client.post("/api/projects", json={"name": "Кампания", "lang": "ru", "template": "dnd", "starter": True})
@@ -221,3 +179,79 @@ def test_starter_template(client):
     assert p["nodeCount"] > 0
     snap = json.loads(json.dumps(client.get(f"/api/projects/{p['id']}/export").json()))
     assert len(snap["edges"]) > 0
+
+
+def test_delete_project_removes_backups(client, project):
+    pid = project["id"]
+    add_node(client, pid)
+    client.post(f"/api/projects/{pid}/backups")
+    client.delete(f"/api/projects/{pid}")
+    assert client.get(f"/api/projects/{pid}/backups").json() == []
+    assert client.get(f"/api/projects/{pid}").status_code == 404
+
+
+def test_errors_keep_their_shape(client, project):
+    r = client.get("/api/projects/nope")
+    assert r.status_code == 404
+    assert r.json()["detail"]["code"] == "projectNotFound"
+    r = client.put("/api/nodes/nope", json={"title": "x"})
+    assert r.json()["detail"]["code"] == "nodeNotFound"
+    r = client.post("/api/projects", json={})
+    assert r.status_code == 422
+    r = client.post("/api/projects/import", json={"name": "   "})
+    assert r.status_code == 400 and r.json()["detail"]["code"] == "projectNameRequired"
+    assert client.get("/api/no-such-route").status_code == 404
+
+
+def test_templates(client):
+    t = {x["id"]: x for x in client.get("/api/templates", params={"lang": "ru"}).json()}
+    assert list(t) == ["blank", "dnd", "custom"]
+    assert t["dnd"]["starter"] is True
+    assert t["blank"]["types"][0] == {"id": "character", "label": "Персонаж", "color": "#E8465E", "icon": "User"}
+    assert t["dnd"]["pages"][0] == "Кампания"
+    p = client.post("/api/projects", json={"name": "Кампания", "lang": "ru", "template": "dnd"}).json()
+    assert p["settings"]["template"] == "dnd"
+    assert p["settings"]["fieldTemplates"]["quest"][0] == "Зацепка"
+    assert [r["id"] for r in p["settings"]["relTypes"]][:3] == ["ally", "enemy", "member"]
+
+
+def test_positions_and_edges(client, project):
+    pid = project["id"]
+    a = add_node(client, pid, title="A")
+    b = add_node(client, pid, title="B")
+    r = client.put(f"/api/projects/{pid}/nodes/positions",
+                   json={"positions": [{"id": a["id"], "position": {"x": 5, "y": 7}}]})
+    assert r.json() == {"ok": True, "updated": 1}
+    e = link(client, pid, a["id"], b["id"])
+    assert link(client, pid, a["id"], b["id"])["id"] == e["id"]  # повторная связь — та же
+    e2 = client.put(f"/api/edges/{e['id']}", json={"label": "брат", "points": [{"x": 1, "y": 2}]}).json()
+    assert e2["label"] == "брат" and e2["points"] == [{"x": 1.0, "y": 2.0}]
+    e3 = client.put(f"/api/edges/{e['id']}", json={"points": []}).json()
+    assert e3["points"] == []  # пустой список — сброс излома, а не «не трогать»
+    g = client.get(f"/api/projects/{pid}/graph").json()
+    pos = {n["id"]: n["position"] for n in g["nodes"]}
+    assert pos[a["id"]] == {"x": 5.0, "y": 7.0}
+
+
+def test_token_is_required(start, tmp_root):
+    s = start(tmp_root / "token.db", token="secret")
+    import httpx
+    assert httpx.get(f"{s.url}/api/projects").status_code == 403
+    assert httpx.get(f"{s.url}/api/projects", headers={"x-bg-token": "secret"}).status_code == 200
+    assert httpx.get(f"{s.url}/api/projects", params={"token": "secret"}).status_code == 200
+
+
+def test_gc_drops_unreferenced_images_on_restart(start, tmp_root):
+    db = tmp_root / "gc.db"
+    s = start(db)
+    c = s.client
+    p = c.post("/api/projects", json={"name": "gc"}).json()
+    n = add_node(c, p["id"], image="data:image/png;base64," + base64.b64encode(PNG + b"gc").decode())
+    digest = n["image"].split(":", 1)[1]
+    c.put(f"/api/nodes/{n['id']}", json={"image": ""})
+    for b in c.get(f"/api/projects/{p['id']}/backups").json():
+        c.delete(f"/api/backups/{b['id']}")
+    assert c.get(f"/api/images/{digest}").status_code == 200
+    s.stop()
+    again = start(db)
+    assert again.client.get(f"/api/images/{digest}").status_code == 404

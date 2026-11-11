@@ -4,8 +4,8 @@
 #
 # Выпуск версии с файлами в релизе делает release.yml (тег 1.5.0 / v1.5.0).
 #
-# Собирается на Linux потому, что встроенный сервер замораживает PyInstaller,
-# а он собирает только под ту систему, на которой запущен.
+# Собирается на Linux потому, что встроенный сервер (server/, Rust)
+# компилируется под ту систему, на которой идёт сборка.
 name: Linux
 
 on:
@@ -13,7 +13,7 @@ on:
     branches: ["**"]
     paths:
       - "electron/**"
-      - "backend/**"
+      - "server/**"
       - "frontend/src/**"
       - "frontend/package.json"
       - "scripts/build.mjs"
@@ -44,15 +44,12 @@ jobs:
             package-lock.json
             frontend/yarn.lock
 
-      - uses: actions/setup-python@v5
+      # Встроенный сервер — Rust (server/); rustup на раннерах уже есть.
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          python-version: "3.12"
-
-      # Сервер: то же окружение backend/.venv, что и при сборке на Windows.
-      - name: Backend environment
-        run: |
-          python -m venv backend/.venv
-          backend/.venv/bin/python -m pip install -r backend/requirements.txt
+          workspaces: server
 
       - name: Install dependencies
         run: |

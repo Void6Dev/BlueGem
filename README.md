@@ -17,7 +17,7 @@ Everything runs locally on your computer—no cloud, no accounts, no Internet co
 * Sync between devices through any cloud folder
 * Import and export projects: `.bgproj`, Markdown, an HTML/PDF world book, PNG/SVG of a canvas
 * Completely offline
-* SQLite-based local storage
+* SQLite-based local storage, served by a small embedded server written in Rust
 
 ## Installation
 
@@ -50,17 +50,15 @@ Some distributions (Ubuntu 22.04+) need FUSE 2 for AppImages: `sudo apt install 
 
 Data lives in `~/.config/BlueGem`.
 
-**Build it yourself** on Linux (Node 20+, Python 3.10+):
+**Build it yourself** on Linux (Node 20+, Rust — https://rustup.rs):
 
 ```bash
-python3 -m venv backend/.venv
-backend/.venv/bin/python -m pip install -r backend/requirements.txt
 npm install
 cd frontend && yarn install && cd ..
 npm run dist:linux        # → release/*.AppImage and release/*.deb
 ```
 
-The Linux build has to run on Linux: the embedded server is frozen with PyInstaller, which only builds for the system it runs on. The **Linux** GitHub workflow builds both files on every tagged version.
+The Linux build has to run on Linux: the embedded server (Rust, `server/`) is compiled for the system the build runs on. The **Linux** GitHub workflow builds both files on every tagged version.
 
 ## Android
 
@@ -139,8 +137,8 @@ Projects can be exported as:
 
 Requirements:
 
-* Node.js 18+
-* Python 3.11+
+* Node.js 20+
+* Rust (stable, https://rustup.rs) — the embedded server in `server/` is written in Rust; `npm run dev` and `npm run dist` build it themselves
 
 ```bash
 npm install
@@ -156,14 +154,16 @@ npm run dist
 ## Tests
 
 ```bash
-# Server API
-pip install -r backend/requirements-dev.txt
-python -m pytest backend/tests
+# Embedded server (Rust): its own tests, then the API over HTTP —
+# including opening a database created by BlueGem 1.5.0
+cd server && cargo test --release && cargo build --release && cd ..
+pip install -r server/api_tests/requirements.txt
+python -m pytest server/api_tests
 
 # Interface: sync merge, search, backlinks, backups, phone storage
 cd frontend && yarn test --watchAll=false
 
-# End to end, in a real browser (needs `yarn build` in frontend first)
+# End to end, in a real browser (needs `yarn build` in frontend and the server built first)
 cd e2e && npm ci && npx playwright install chromium && npx playwright test
 ```
 

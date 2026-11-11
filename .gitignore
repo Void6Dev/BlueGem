@@ -2,10 +2,8 @@
 node_modules/
 frontend/build/
 release/
-backend/dist/
-backend/build/
-backend/.venv/
-backend/.pyinstaller/
+server/target/
+server/dist/
 __pycache__/
 
 # Android: Gradle и Android Studio кладут сюда своё (правила для самого

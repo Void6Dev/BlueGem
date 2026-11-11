@@ -68,13 +68,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/setup-python@v5
+      # Встроенный сервер — Rust (server/); rustup на раннерах уже есть.
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          python-version: "3.12"
-      - name: Backend environment
-        run: |
-          python -m venv backend/.venv
-          backend/.venv/Scripts/python.exe -m pip install -r backend/requirements.txt
+          workspaces: server
       - name: Install dependencies
         run: |
           npm ci
@@ -104,13 +103,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/setup-python@v5
+      # Встроенный сервер — Rust (server/); rustup на раннерах уже есть.
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          python-version: "3.12"
-      - name: Backend environment
-        run: |
-          python -m venv backend/.venv
-          backend/.venv/bin/python -m pip install -r backend/requirements.txt
+          workspaces: server
       - name: Install dependencies
         run: |
           npm ci

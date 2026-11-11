@@ -1,76 +1,48 @@
 /**
- * Замораживает FastAPI-сервер в самостоятельный исполняемый файл.
+ * Собирает встроенный сервер (server/, Rust) в один исполняемый файл.
  *
- * На выходе backend/dist/bluegem-backend/bluegem-backend(.exe) со всеми
- * зависимостями рядом — на машине пользователя python не нужен.
+ * На выходе server/dist/bluegem-backend(.exe) — отсюда его берёт
+ * electron-builder (extraResources). Ни Python, ни других зависимостей на
+ * машине пользователя не нужно.
  *
- * PyInstaller не собирает «на вырост»: сервер для Windows собирается на
- * Windows, для Linux — на Linux. Поэтому скрипт один, а пути — по системе.
+ * Собирается под систему, на которой запущен: Windows-сервер — на Windows,
+ * Linux — на Linux.
  *
  * Запуск: npm run build:backend
  */
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const IS_WIN = process.platform === "win32";
-const PYTHON = IS_WIN
-  ? join(ROOT, "backend", ".venv", "Scripts", "python.exe")
-  : join(ROOT, "backend", ".venv", "bin", "python");
-const SPEC = join(ROOT, "backend", "bluegem-backend.spec");
-const OUT = join(ROOT, "backend", "dist", "bluegem-backend", IS_WIN ? "bluegem-backend.exe" : "bluegem-backend");
+const EXE = process.platform === "win32" ? "bluegem-backend.exe" : "bluegem-backend";
+const MANIFEST = join(ROOT, "server", "Cargo.toml");
+const BUILT = join(ROOT, "server", "target", "release", EXE);
+const DIST = join(ROOT, "server", "dist");
+const OUT = join(DIST, EXE);
 
-function run(cmd, args, label) {
-  console.log(`\n[backend] ${label}`);
-  const res = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit" });
-  if (res.error) throw res.error;
-  return res.status ?? 1;
-}
-
-if (!existsSync(PYTHON)) {
-  console.error(
-    (IS_WIN
-      ? [
-        "Не найдено окружение backend/.venv.",
-        "Создайте его и поставьте зависимости:",
-        "  python -m venv backend\\.venv",
-        "  backend\\.venv\\Scripts\\python.exe -m pip install -r backend\\requirements.txt",
-      ]
-      : [
-        "Не найдено окружение backend/.venv.",
-        "Создайте его и поставьте зависимости:",
-        "  python3 -m venv backend/.venv",
-        "  backend/.venv/bin/python -m pip install -r backend/requirements.txt",
-      ]).join("\n"),
-  );
+const hasCargo = spawnSync("cargo", ["--version"], { stdio: "ignore", shell: process.platform === "win32" }).status === 0;
+if (!hasCargo) {
+  console.error([
+    "Не найден cargo — для сборки сервера нужен Rust.",
+    "Поставьте его с https://rustup.rs и повторите сборку.",
+  ].join("\n"));
   process.exit(1);
 }
 
-// PyInstaller ставится в то же окружение — так он видит те же пакеты.
-const hasPyInstaller = spawnSync(PYTHON, ["-m", "PyInstaller", "--version"], { cwd: ROOT }).status === 0;
-if (!hasPyInstaller) {
-  if (run(PYTHON, ["-m", "pip", "install", "pyinstaller"], "ставлю PyInstaller") !== 0) {
-    console.error("Не удалось поставить PyInstaller.");
-    process.exit(1);
-  }
-}
-
-const status = run(
-  PYTHON,
-  [
-    "-m", "PyInstaller", SPEC,
-    "--noconfirm",
-    "--clean",
-    "--distpath", join(ROOT, "backend", "dist"),
-    "--workpath", join(ROOT, "backend", ".pyinstaller"),
-  ],
-  "собираю сервер",
-);
-
-if (status !== 0 || !existsSync(OUT)) {
-  console.error(`\nСборка сервера не удалась (ожидался ${OUT}).`);
+console.log("\n[backend] собираю сервер (cargo build --release)");
+const res = spawnSync("cargo", ["build", "--release", "--locked", "--manifest-path", MANIFEST], {
+  cwd: ROOT,
+  stdio: "inherit",
+  shell: process.platform === "win32",
+});
+if (res.status !== 0 || !existsSync(BUILT)) {
+  console.error(`\nСборка сервера не удалась (ожидался ${BUILT}).`);
   process.exit(1);
 }
+
+rmSync(DIST, { recursive: true, force: true });
+mkdirSync(DIST, { recursive: true });
+copyFileSync(BUILT, OUT);
 console.log(`\n[backend] готово: ${OUT}`);

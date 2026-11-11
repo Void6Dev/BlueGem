@@ -1,5 +1,7 @@
 # Проверки BlueGem на каждый пуш и пулл-реквест:
-#   * backend — pytest по API встроенного сервера (backend/tests);
+#   * server — встроенный сервер на Rust: его собственные тесты (cargo test)
+#     и проверки API по HTTP (server/api_tests, pytest), включая открытие
+#     базы, созданной BlueGem 1.5.0;
 #   * frontend — Jest: слияние для синхронизации, поиск, обратные ссылки,
 #     правила резервных копий и хранилище телефона (IndexedDB);
 #   * e2e — Playwright в настоящем браузере: собранный интерфейс, настоящий
@@ -19,18 +21,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  backend:
+  server:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      # Встроенный сервер — Rust (server/); rustup на раннерах уже есть.
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      - run: cargo test --release --locked
+        working-directory: server
+      - run: cargo build --release --locked
+        working-directory: server
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements*.txt
-      - run: pip install -r backend/requirements-dev.txt
-      - run: python -m pytest -q backend/tests
+          cache-dependency-path: server/api_tests/requirements.txt
+      - run: pip install -r server/api_tests/requirements.txt
+      - run: python -m pytest -q server/api_tests
 
   frontend:
     runs-on: ubuntu-latest
@@ -59,12 +71,14 @@ jobs:
           node-version: 22
           cache: yarn
           cache-dependency-path: frontend/yarn.lock
-      - uses: actions/setup-python@v5
+      # Встроенный сервер — Rust (server/); rustup на раннерах уже есть.
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/requirements*.txt
-      - run: pip install -r backend/requirements.txt
+          workspaces: server
+      - run: cargo build --release --locked
+        working-directory: server
 
       - name: Build the interface
         run: |
@@ -85,7 +99,6 @@ jobs:
         working-directory: e2e
         env:
           CI: true
-          BG_PYTHON: python
 
       - uses: actions/upload-artifact@v4
         if: failure()

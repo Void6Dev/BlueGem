@@ -1,30 +1,30 @@
-// Сквозные проверки: настоящий сервер (backend/server.py) отдаёт собранный
+// Сквозные проверки: настоящий сервер (server/, Rust) отдаёт собранный
 // интерфейс (frontend/build), Playwright ходит по нему как человек.
 //
 // Серверов два — «два компьютера» с разными базами: на них проверяется
 // синхронизация через общую папку. Остальным тестам хватает первого.
 //
-// Перед запуском: собрать интерфейс (cd frontend && yarn build) и поставить
-// зависимости сервера (backend/requirements.txt).
+// Перед запуском: собрать интерфейс (cd frontend && yarn build) и сервер
+// (cd server && cargo build --release).
 import { defineConfig } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
-const venv = path.join(root, "backend", ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
-const python = process.env.BG_PYTHON || (fs.existsSync(venv) ? venv : "python");
+const exe = process.platform === "win32" ? "bluegem-backend.exe" : "bluegem-backend";
+const serverBin = process.env.BG_SERVER_BIN || path.join(root, "server", "target", "release", exe);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bluegem-e2e-"));
 
 export const PORTS = { a: 8197, b: 8198 };
 
 const server = (name, port) => ({
-  command: `"${python}" -m uvicorn server:app --host 127.0.0.1 --port ${port}`,
-  cwd: path.join(root, "backend"),
+  command: `"${serverBin}"`,
   url: `http://127.0.0.1:${port}/api/health`,
   reuseExistingServer: false,
   timeout: 60_000,
   env: {
+    BG_PORT: String(port),
     SQLITE_PATH: path.join(tmp, `${name}.db`),
     BG_STATIC_DIR: path.join(root, "frontend", "build"),
     BG_TOKEN: "",

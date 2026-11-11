@@ -1,12 +1,13 @@
 /**
  * Режим разработки: CRA с горячей перезагрузкой внутри окна Electron.
  *
- * Сервер поднимает сам Electron (из backend/.venv), интерфейс берётся с
- * dev-сервера CRA. Закрыли окно — гасим и dev-сервер.
+ * Сервер (server/, Rust) собирается здесь же перед стартом — cargo
+ * пересобирает только то, что поменялось, — а поднимает его сам Electron.
+ * Интерфейс берётся с dev-сервера CRA. Закрыли окно — гасим и dev-сервер.
  *
  * Запуск: npm run dev
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +51,17 @@ function waitForPort(port, timeoutMs = 180_000) {
     };
     attempt();
   });
+}
+
+console.log("[dev] собираю сервер");
+const cargo = spawnSync(
+  "cargo",
+  ["build", "--release", "--manifest-path", join(ROOT, "server", "Cargo.toml")],
+  { cwd: ROOT, stdio: "inherit", shell: process.platform === "win32" },
+);
+if (cargo.status !== 0) {
+  console.error("[dev] сервер не собрался — нужен Rust (https://rustup.rs)");
+  process.exit(1);
 }
 
 console.log(`[dev] запускаю интерфейс на ${DEV_URL}`);
