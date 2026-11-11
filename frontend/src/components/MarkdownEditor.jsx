@@ -150,14 +150,19 @@ function build(view, ctx) {
       const b = a + m[0].length;
       if (inCode(tree, a)) continue;
       wiki.push([a, b]);
-      const title = m[1].trim();
+      // [[Анна|Анны]]: ведёт к «Анна», а показывается «Анны».
+      const bar = m[1].indexOf("|");
+      const title = (bar >= 0 ? m[1].slice(0, bar) : m[1]).trim();
       const known = ctx.current.byTitle.has(title.toLowerCase());
       const live = !isActive(a);
       const cls = `cm-md-wiki${known ? "" : " is-missing"}${live ? " is-link" : ""}`;
       const attrs = { class: cls, "data-wiki": title };
       if (live) {
-        out.push(hide.range(a, a + 2));
-        out.push(Decoration.mark({ attributes: attrs }).range(a + 2, b - 2));
+        // Пустая подпись ([[Анна|]]) — показываем ссылку целиком.
+        const aliasFrom = a + 2 + bar + 1;
+        const shownFrom = bar >= 0 && aliasFrom < b - 2 ? aliasFrom : a + 2;
+        out.push(hide.range(a, shownFrom));
+        out.push(Decoration.mark({ attributes: attrs }).range(shownFrom, b - 2));
         out.push(hide.range(b - 2, b));
       } else {
         out.push(Decoration.mark({ attributes: attrs }).range(a, b));

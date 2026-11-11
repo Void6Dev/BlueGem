@@ -86,11 +86,24 @@ function link(text, href, key) {
   return <span key={key} className="sw-accent-text">{text}</span>;
 }
 
-/** [[Название узла]] — переход к узлу, а если такого нет, предложение завести. */
+/**
+ * [[Название узла]] — переход к узлу, а если такого нет, предложение завести.
+ * [[Название|подпись]] — ссылка на узел «Название» с другим текстом: «брат
+ * [[Анна|Анны]]» читается по-русски, а ведёт всё равно к Анне.
+ */
 function wiki(name, key) {
-  const clean = name.trim();
-  if (!opts.doc) return <span key={key} className="sw-accent-text">{clean}</span>;
+  const [rawTarget, ...rest] = name.split("|");
+  const clean = rawTarget.trim();
+  const shown = rest.join("|").trim() || clean;
+  if (!opts.doc) return <span key={key} className="sw-accent-text">{shown}</span>;
   const id = opts.nodesByTitle?.[clean.toLowerCase()];
+  // Статичный документ (книга мира в HTML): ссылка — обычный якорь на раздел
+  // узла, без обработчиков; несуществующий узел — просто текст.
+  if (opts.hrefFor) {
+    return id
+      ? <a key={key} href={opts.hrefFor(id)} className="wiki">{shown}</a>
+      : <span key={key} className="wiki-missing">{shown}</span>;
+  }
   if (id) {
     return (
       <button
@@ -99,7 +112,7 @@ function wiki(name, key) {
         onClick={(e) => { e.preventDefault(); opts.onOpenNode?.(id); }}
         className="sw-accent-text underline underline-offset-2 hover:opacity-80"
       >
-        {clean}
+        {shown}
       </button>
     );
   }
@@ -111,7 +124,7 @@ function wiki(name, key) {
       onClick={(e) => { e.preventDefault(); opts.onCreateNode?.(clean); }}
       className="sw-text-dim underline decoration-dashed underline-offset-2 hover:sw-accent-text"
     >
-      {clean}
+      {shown}
     </button>
   );
 }

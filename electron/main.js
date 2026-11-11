@@ -24,6 +24,7 @@ const { buildMenu } = require("./menu");
 const i18n = require("./i18n");
 const updater = require("./update");
 const feedback = require("./feedback");
+const { FolderSync } = require("./sync");
 
 const APP_ID = "com.bluegem.app";
 const PROJECT_ROOT = path.join(__dirname, "..");
@@ -49,6 +50,7 @@ if (process.env.PORTABLE_EXECUTABLE_DIR) {
 }
 
 let win = null;
+let folderSync = null;
 let backend = null;
 let windowState = null;
 let pendingProject = null; // файл, с которым запустили приложение
@@ -338,6 +340,10 @@ async function chooseProjectFile() {
 /* ------------------------------------------------------------------ */
 
 function registerIpc(dataDir) {
+  // Папка синхронизации: файлы проектов, которые разносит облачный клиент.
+  folderSync = new FolderSync(dataDir, () => win);
+  folderSync.register(ipcMain);
+
   // Синхронно — preload запрашивает конфигурацию до выполнения кода страницы.
   ipcMain.on("bg:config", (event) => {
     event.returnValue = {
@@ -351,6 +357,8 @@ function registerIpc(dataDir) {
 
   ipcMain.handle("bg:save-file", async (_e, options = {}) => {
     const { defaultPath = "project.bgproj", content = "", filters = projectFilters() } = options;
+    // base64 — двоичный файл (картинка холста): содержимое приходит строкой.
+    const binary = options.encoding === "base64";
     if (typeof content !== "string") return { ok: false, error: i18n.t("dialog.nothingToSave") };
     try {
       const { canceled, filePath } = await dialog.showSaveDialog(win, {
@@ -359,12 +367,45 @@ function registerIpc(dataDir) {
         filters,
       });
       if (canceled || !filePath) return { ok: false, canceled: true };
-      await fsp.writeFile(filePath, content, "utf8");
+      await fsp.writeFile(filePath, binary ? Buffer.from(content, "base64") : content, binary ? undefined : "utf8");
       log.info(`сохранено: ${filePath}`);
       return { ok: true, path: filePath };
     } catch (err) {
       log.error(`не удалось сохранить: ${err.message}`);
       return { ok: false, error: err.message };
+    }
+  });
+
+  // Книга мира в PDF: HTML печатается невидимым окном средствами Chromium.
+  // Окно без скриптов и без доступа к чему-либо — только разметка из файла.
+  ipcMain.handle("bg:print-pdf", async (_e, options = {}) => {
+    const html = String(options.html || "");
+    if (!html) return { ok: false, error: i18n.t("dialog.nothingToSave") };
+    const tmp = path.join(app.getPath("temp"), `bluegem-book-${process.pid}-${Date.now()}.html`);
+    let printer = null;
+    try {
+      const { canceled, filePath } = await dialog.showSaveDialog(win, {
+        title: i18n.t("dialog.saveAs"),
+        defaultPath: path.join(app.getPath("documents"), path.basename(String(options.defaultPath || "world.pdf"))),
+        filters: [{ name: "PDF", extensions: ["pdf"] }],
+      });
+      if (canceled || !filePath) return { ok: false, canceled: true };
+      await fsp.writeFile(tmp, html, "utf8");
+      printer = new BrowserWindow({
+        show: false,
+        webPreferences: { javascript: false, sandbox: true, contextIsolation: true, nodeIntegration: false },
+      });
+      await printer.loadFile(tmp);
+      const pdf = await printer.webContents.printToPDF({ printBackground: true, pageSize: "A4" });
+      await fsp.writeFile(filePath, pdf);
+      log.info(`PDF сохранён: ${filePath}`);
+      return { ok: true, path: filePath };
+    } catch (err) {
+      log.error(`не удалось сохранить PDF: ${err.message}`);
+      return { ok: false, error: err.message };
+    } finally {
+      if (printer && !printer.isDestroyed()) printer.destroy();
+      fsp.unlink(tmp).catch(() => {});
     }
   });
 

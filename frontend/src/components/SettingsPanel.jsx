@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import {
   X, Plus, Trash2, Sun, Moon, Check, ChevronUp, ChevronDown, Layers, Languages,
-  FolderOpen, Palette, Share2, Shapes, Link2, CalendarRange,
+  FolderOpen, Palette, Share2, Shapes, Link2, CalendarRange, History, Bookmark,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,6 +23,7 @@ import { useBackHandler } from "@/lib/platform";
 import { scrollWithin } from "@/lib/scrollWithin";
 import CalendarEditor from "@/components/chrono/CalendarEditor";
 import EraEditor from "@/components/chrono/EraEditor";
+import BackupsSection from "@/components/BackupsSection";
 
 /**
  * Поле «добавить подсказку». Своё состояние здесь, а не в панели: иначе один
@@ -64,7 +65,7 @@ let lastSection = "project";
 
 export default function SettingsPanel({
   settings, onChange, onClose, project, onProjectChange, typeUsage = {}, canvasUsage = {},
-  relUsage = {}, highlightType, onHighlighted,
+  relUsage = {}, highlightType, onHighlighted, onRestored,
 }) {
   const t = useT();
   // «Назад» на телефоне закрывает окно настроек, а не уходит со страницы.
@@ -230,6 +231,8 @@ export default function SettingsPanel({
     { id: "types", icon: Shapes, label: t("settings.nodeTypes") },
     { id: "relations", icon: Link2, label: t("settings.sectionRelations") },
     { id: "chronology", icon: CalendarRange, label: t("settings.sectionChronology") },
+    { id: "templates", icon: Bookmark, label: t("settings.sectionTemplates") },
+    ...(project?.id ? [{ id: "backups", icon: History, label: t("settings.sectionBackups") }] : []),
   ];
   const current = sections.find((x) => x.id === section) || sections[0];
 
@@ -608,6 +611,48 @@ export default function SettingsPanel({
     </>
   );
 
+  // Свои шаблоны узлов: сохраняются из меню узла, здесь — переименовать и
+  // убрать. Правка содержимого шаблона — через узел: создать, поправить,
+  // сохранить заново. Второй редактор узла внутри настроек был бы лишним.
+  const templates = Array.isArray(s.nodeTemplates) ? s.nodeTemplates : [];
+  const setTemplates = (list) => set({ nodeTemplates: list });
+  const renderTemplates = () => (
+    <div className="space-y-2 max-w-xl" data-testid="templates-section">
+      {templates.length === 0 && (
+        <p className="text-sm sw-text-dim">{t("templates.empty")}</p>
+      )}
+      {templates.map((tpl) => {
+        const type = (s.nodeTypes || []).find((x) => x.id === tpl.typeId);
+        return (
+          <div key={tpl.id} className="flex items-center gap-2 rounded-lg border sw-border-c px-2.5 py-2" data-testid={`template-${tpl.id}`}>
+            <span className="w-3 h-3 rounded-full shrink-0" style={{ background: type?.color || "#6B7280" }} />
+            <div className="flex-1 min-w-0">
+              <Input
+                value={tpl.label}
+                onChange={(e) => setTemplates(templates.map((x) => (x.id === tpl.id ? { ...x, label: e.target.value } : x)))}
+                className="bg-transparent border-0 h-7 px-1 text-sm focus-visible:ring-0"
+              />
+              <p className="text-[11px] sw-text-dim px-1 truncate">
+                {[type?.label || tpl.typeId,
+                  tpl.fields?.length ? t("templates.fields", { count: tpl.fields.length }) : "",
+                  ...(tpl.tags || []).map((x) => `#${x}`)].filter(Boolean).join(" · ")}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTemplates(templates.filter((x) => x.id !== tpl.id))}
+              title={t("common.delete")}
+              className="p-1.5 rounded-md text-red-400 hover:bg-red-500/10 shrink-0"
+              data-testid={`template-delete-${tpl.id}`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   const renderers = {
     project: renderProject,
     appearance: renderAppearance,
@@ -616,6 +661,8 @@ export default function SettingsPanel({
     types: renderTypes,
     relations: renderRelations,
     chronology: renderChronology,
+    templates: renderTemplates,
+    backups: () => <BackupsSection projectId={project.id} onRestored={onRestored} />,
   };
 
   // Окно — порталом в body: внутри рабочей области у предков есть transform

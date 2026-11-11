@@ -6,7 +6,8 @@
 // пишутся вместе или не пишутся вовсе.
 
 const DB_NAME = "bluegem";
-const DB_VERSION = 1;
+// 2 — картинки отдельно от узлов и резервные копии проектов.
+const DB_VERSION = 2;
 
 let opening = null;
 
@@ -26,6 +27,14 @@ function upgrade(db) {
     edges.createIndex("projectId", "projectId");
     edges.createIndex("source", "source");
     edges.createIndex("target", "target");
+  }
+  if (!db.objectStoreNames.contains("images")) {
+    // Байты картинок узлов, по одной записи на содержимое (ключ — sha256).
+    db.createObjectStore("images", { keyPath: "hash" });
+  }
+  if (!db.objectStoreNames.contains("backups")) {
+    const backups = db.createObjectStore("backups", { keyPath: "id" });
+    backups.createIndex("projectId", "projectId");
   }
 }
 

@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld("bluegem", {
 
   /** Системный диалог сохранения. Возвращает { ok, canceled, path, error }. */
   saveFile: (options) => ipcRenderer.invoke("bg:save-file", options),
+  /** HTML → PDF через невидимое окно и диалог сохранения. { ok, canceled, path, error }. */
+  printPdf: (options) => ipcRenderer.invoke("bg:print-pdf", options),
   /** Системный диалог открытия. Возвращает { ok, canceled, path, content, error }. */
   openFile: (options) => ipcRenderer.invoke("bg:open-file", options),
   /** Файл, с которым приложение запустили (двойной клик по .bgproj), если он был. */
@@ -40,6 +42,25 @@ contextBridge.exposeInMainWorld("bluegem", {
   restart: () => ipcRenderer.invoke("bg:restart"),
   /** Сообщить оболочке выбранный язык: меню и диалоги следуют за интерфейсом. */
   setLanguage: (lang) => ipcRenderer.invoke("bg:set-language", lang),
+
+  /**
+   * Папка синхронизации (см. electron/sync.js): файлы *.bgproj прямо в ней.
+   * state()  — { folder, available };
+   * choose() — выбрать папку системным диалогом;
+   * list()   — [{ name, mtimeMs, size }];
+   * onChanged(handler) — в папке что-то поменялось (с задержкой ~1 с).
+   */
+  sync: {
+    state: () => ipcRenderer.invoke("bg:sync-state"),
+    choose: (options) => ipcRenderer.invoke("bg:sync-choose", options || {}),
+    disable: () => ipcRenderer.invoke("bg:sync-disable"),
+    list: () => ipcRenderer.invoke("bg:sync-list"),
+    read: (name) => ipcRenderer.invoke("bg:sync-read", name),
+    write: (name, text) => ipcRenderer.invoke("bg:sync-write", name, text),
+    trash: (name) => ipcRenderer.invoke("bg:sync-trash", name),
+    reveal: () => ipcRenderer.invoke("bg:sync-reveal"),
+    onChanged: (handler) => subscribe("bg:sync-changed", handler),
+  },
 
   /** Проект, открытый через «Открыть…» или ассоциацию файлов. */
   onOpenProject: (handler) => subscribe("bg:open-project", handler),

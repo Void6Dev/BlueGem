@@ -6,12 +6,14 @@ import { NodeIcon } from "@/components/NodeIcon";
 import { useT } from "@/lib/i18n";
 import { scrollWithin } from "@/lib/scrollWithin";
 import { useSlidingThumb } from "@/lib/useSlidingThumb";
+import { rankNodes } from "@/lib/search";
 import { useBackHandler, useIsMobile } from "@/lib/platform";
 
 /**
  * Ctrl+K palette: one input that reaches every node and every command.
  * `commands` — [{ id, label, hint, icon: LucideComponent, run }]
- * `nodes`    — [{ id, title, subtitle, color, icon }]
+ * `nodes`    — [{ id, title, subtitle, body, color, icon }]; body — описание и
+ *              характеристики плоским текстом: по нему ищется «в глубину»
  */
 export default function CommandPalette({ open, onClose, commands = [], nodes = [] }) {
   const t = useT();
@@ -37,9 +39,7 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
     const needle = q.trim().toLowerCase();
     const match = (s) => !needle || (s || "").toLowerCase().includes(needle);
     const cmd = commands.filter((c) => match(c.label) || match(c.hint)).map((c) => ({ ...c, kind: "cmd" }));
-    const nds = nodes
-      .filter((n) => match(n.title) || match(n.subtitle))
-      .slice(0, 40)
+    const nds = rankNodes(nodes, needle, 40)
       .map((n) => ({ ...n, kind: "node", label: n.title || t("common.untitled") }));
     // While typing, content matters more than commands.
     return needle ? [...nds, ...cmd] : [...cmd, ...nds];
@@ -134,7 +134,14 @@ export default function CommandPalette({ open, onClose, commands = [], nodes = [
                 )}
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm truncate">{item.label}</span>
-                  {item.subtitle && <span className="block text-[11px] sw-text-dim truncate">{item.subtitle}</span>}
+                  {item.snippet ? (
+                    // Нашлось не в названии, а в тексте — показываем где.
+                    <span className="block text-[11px] sw-text-dim truncate" data-testid="palette-snippet">
+                      {item.snippet.before}
+                      <mark className="sw-palette-mark">{item.snippet.match}</mark>
+                      {item.snippet.after}
+                    </span>
+                  ) : item.subtitle && <span className="block text-[11px] sw-text-dim truncate">{item.subtitle}</span>}
                 </span>
                 {item.hint && <kbd>{item.hint}</kbd>}
                 {i === cursor && <CornerDownLeft className="w-3.5 h-3.5 sw-text-dim shrink-0" />}

@@ -3,6 +3,7 @@ import { apiBase, apiToken, isDesktop } from "@/lib/desktop";
 import { getLanguage, t } from "@/lib/i18n";
 import { isNative } from "@/lib/platform";
 import { localApi } from "@/lib/local/api";
+import { setImageResolver } from "@/lib/images";
 
 /**
  * Данные без сервера: на телефоне (Capacitor) и в сборке с
@@ -61,8 +62,19 @@ const remoteApi = {
   updateProject: (id, data) => client.put(`/projects/${id}`, data).then((r) => r.data),
   deleteProject: (id) => client.delete(`/projects/${id}`).then((r) => r.data),
   duplicateProject: (id) => client.post(`/projects/${id}/duplicate`).then((r) => r.data),
-  exportProject: (id) => client.get(`/projects/${id}/export`).then((r) => r.data),
+  // inline: картинки строками data: (для файла); без него — ссылками bg-image.
+  exportProject: (id, { inline = true } = {}) =>
+    client.get(`/projects/${id}/export`, { params: { inline } }).then((r) => r.data),
+  // keepIds в payload — оставить id из файла (перенос между устройствами).
   importProject: (payload) => client.post("/projects/import", payload).then((r) => r.data),
+  // Содержимое проекта целиком — так синхронизация кладёт результат слияния.
+  replaceProject: (id, snapshot) =>
+    client.put(`/projects/${id}/content`, snapshot, { timeout: 60000 }).then((r) => r.data),
+
+  listBackups: (id) => client.get(`/projects/${id}/backups`).then((r) => r.data),
+  createBackup: (id) => client.post(`/projects/${id}/backups`).then((r) => r.data),
+  restoreBackup: (backupId) => client.post(`/backups/${backupId}/restore`).then((r) => r.data),
+  deleteBackup: (backupId) => client.delete(`/backups/${backupId}`).then((r) => r.data),
 
   getGraph: (id) => client.get(`/projects/${id}/graph`).then((r) => r.data),
   createNode: (pid, data) => client.post(`/projects/${pid}/nodes`, data).then((r) => r.data),
@@ -84,3 +96,13 @@ const offlineApi = {
 };
 
 export const api = isLocalStorage ? offlineApi : remoteApi;
+
+// Откуда <img> берёт картинку по ссылке bg-image. У сервера — обычный адрес:
+// токен идёт параметром, потому что заголовок картинке не передать. У
+// хранилища в приложении — Blob из IndexedDB.
+setImageResolver(isLocalStorage
+  ? { url: () => "", load: (hash) => localApi.loadImage(hash) }
+  : {
+    url: (hash) => `${API}/images/${hash}${apiToken ? `?token=${encodeURIComponent(apiToken)}` : ""}`,
+    load: null,
+  });

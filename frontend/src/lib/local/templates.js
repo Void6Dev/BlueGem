@@ -172,6 +172,8 @@ export const DEFAULT_SETTINGS = {
   canvases: [{ id: "main", label: MAIN_CANVAS_LABELS[DEFAULT_LANG] }],
   relTypes: [],
   fieldTemplates: {},
+  // Свои шаблоны узлов (lib/nodeTemplates.js).
+  nodeTemplates: [],
   template: DEFAULT_TEMPLATE,
   calendar: null,
   eras: [],

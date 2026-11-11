@@ -16,10 +16,12 @@ import { api, apiErrorMessage } from "@/lib/api";
 import { applyStoredAppearance } from "@/lib/settings";
 import { readJsonFile } from "@/lib/exporters";
 import { isDesktop, pickProjectFile } from "@/lib/desktop";
-import { openSnapshot, parseSnapshot } from "@/lib/openProject";
+import { openResultMessage, openSnapshot, parseSnapshot } from "@/lib/openProject";
 import UpdateCenter from "@/components/UpdateCenter";
+import SyncCenter from "@/components/SyncCenter";
 import logo from "@/assets/logo.png";
 import { LANGUAGES, getLanguage, setLanguage, useT } from "@/lib/i18n";
+import { relativeTime } from "@/lib/time";
 import { useSlidingThumb } from "@/lib/useSlidingThumb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -120,20 +122,6 @@ function LanguageSwitch({ lang }) {
   );
 }
 
-function relativeTime(iso, t, lang) {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "";
-  const diff = Date.now() - then;
-  const min = Math.round(diff / 60000);
-  if (min < 1) return t("time.justNow");
-  if (min < 60) return t("time.minutes", { count: min });
-  const h = Math.round(min / 60);
-  if (h < 24) return t("time.hours", { count: h });
-  const d = Math.round(h / 24);
-  if (d < 31) return t("time.days", { count: d });
-  return new Date(iso).toLocaleDateString(lang === "ru" ? "ru-RU" : "en-GB");
-}
-
 export default function Dashboard() {
   const t = useT();
   const lang = getLanguage();
@@ -174,6 +162,28 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
+
+  // Синхронизация принесла новый проект или обновила старый — список тихо
+  // перечитывается, без заглушки загрузки поверх карточек.
+  useEffect(() => {
+    const refresh = (e) => {
+      api.listProjects().then(setProjects).catch(() => {});
+      if (e.type === "bluegem:projects-changed" && e.detail?.projectId) {
+        api.getProject(e.detail.projectId)
+          .then((p) => toast.success(t("sync.imported", { name: p.name })))
+          .catch(() => {});
+      }
+    };
+    const detached = (e) => toast.message(t("sync.detached", { name: e.detail?.name || "" }));
+    window.addEventListener("bluegem:projects-changed", refresh);
+    window.addEventListener("bluegem:project-replaced", refresh);
+    window.addEventListener("bluegem:project-detached", detached);
+    return () => {
+      window.removeEventListener("bluegem:projects-changed", refresh);
+      window.removeEventListener("bluegem:project-replaced", refresh);
+      window.removeEventListener("bluegem:project-detached", detached);
+    };
+  }, [t]);
 
   /** Возвращает true, если проект создан: диалог по этому признаку снимает
    *  занятость с кнопки, а на ошибке остаётся открытым с введённым текстом. */
@@ -296,9 +306,7 @@ export default function Dashboard() {
   const acceptSnapshot = async (snapshot) => {
     const result = await openSnapshot(snapshot);
     if (!result) return; // отказались в диалоге
-    toast.success(t(result.action === "imported"
-      ? "dashboard.toasts.imported"
-      : "dashboard.toasts.opened", { name: result.name }));
+    toast.success(openResultMessage(result));
     navigate(`/project/${result.id}`);
   };
 
@@ -418,6 +426,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-2.5 px-4 h-14">
             <img src={logo} alt="" className="w-8 h-8 rounded-[10px]" draggable={false} />
             <span className="sw-display text-lg tracking-tight flex-1">BlueGem</span>
+            <SyncCenter />
             <UpdateCenter />
             <button type="button" className="sw-icon-btn" onClick={importProject} data-testid="import-project-btn" aria-label={t("dashboard.import")}>
               <Upload className="w-5 h-5" />
@@ -557,6 +566,7 @@ export default function Dashboard() {
             <input ref={fileRef} type="file" accept=".bgproj,.swproj,application/json,.json" onChange={onImportFile} className="hidden" />
             {/* Обновления и письмо автору: единственное место, где приложение
                 говорит о себе самом, — шапка главной. */}
+            <SyncCenter />
             <UpdateCenter />
             <Button
               data-testid="import-project-btn"

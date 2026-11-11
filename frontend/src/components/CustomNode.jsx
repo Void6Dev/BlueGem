@@ -4,6 +4,7 @@ import { CalendarRange, FileText, Layers, Link2, Pencil } from "lucide-react";
 import { NodeIcon } from "@/components/NodeIcon";
 import MiniMarkdown from "@/lib/miniMarkdown";
 import { useT } from "@/lib/i18n";
+import { useImageSrc } from "@/lib/images";
 
 // Больше в карточку всё равно не влезает, а разбирать простыню на каждый узел
 // холста незачем.
@@ -73,6 +74,8 @@ function onGlowMove(e) {
 
 function CustomNode({ data, selected }) {
   const t = useT();
+  // Ссылка bg-image → адрес; на телефоне байты приходят из хранилища позже.
+  const imageSrc = useImageSrc(data.image);
   const {
     id, title, description, nodeType, fields = [], image, tags = [], date,
     degree = 0, dimmed, faded, hit, linking, linkable, onRename, onFocusField,
@@ -303,7 +306,7 @@ function CustomNode({ data, selected }) {
 
         {/* Картинка — только в «карточках». В режиме графа она съедает
             четверть экрана на узел, а связи ради этого не читаются. */}
-        {lod === LOD_FULL && detailed && image && (
+        {lod === LOD_FULL && detailed && imageSrc && (
           <div className="sw-node-img-wrap">
             {/* Картинка приезжает позже разметки и толкает карточку вниз —
                 точки связи после этого надо пересчитать заново. */}
@@ -311,7 +314,7 @@ function CustomNode({ data, selected }) {
                 иначе десяток карточек с фотографиями подряд стопорит холст
                 ровно в тот момент, когда по нему ведут мышью. */}
             <img
-              src={image}
+              src={imageSrc}
               alt=""
               loading="lazy"
               decoding="async"

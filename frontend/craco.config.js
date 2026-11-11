@@ -7,6 +7,12 @@ module.exports = {
       "@": path.resolve(__dirname, "src"),
     },
   },
+  // Тесты (craco test) понимают тот же псевдоним "@/...".
+  jest: {
+    configure: {
+      moduleNameMapper: { "^@/(.*)$": "<rootDir>/src/$1" },
+    },
+  },
   devServer: {
     client: {
       overlay: {

@@ -16,3 +16,8 @@ local.properties
 *.jks
 # Отладочный ключ Android — общий намеренно, см. frontend/android/app/build.gradle.
 !frontend/android/app/bluegem-debug.keystore
+
+# Сквозные проверки (e2e/)
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/

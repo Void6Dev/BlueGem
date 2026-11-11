@@ -1,0 +1,11 @@
+{
+  "name": "bluegem-e2e",
+  "private": true,
+  "description": "Сквозные проверки BlueGem в браузере: сервер с собранным интерфейсом и Playwright.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
