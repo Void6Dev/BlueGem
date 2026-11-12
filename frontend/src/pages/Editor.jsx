@@ -15,7 +15,7 @@ import {
   ChevronDown, ChevronUp, Minus, Undo2,
   Link2, Crosshair, Pencil, Trash2,
   SquareDashedMousePointer, Waypoints, Shapes,
-  LayoutGrid, ClipboardPaste, Minimize2, Map as MapIcon, MoreHorizontal, Bookmark,
+  LayoutGrid, ClipboardPaste, Minimize2, Map as MapIcon, MoreHorizontal, Bookmark, History,
 } from "lucide-react";
 import { api, apiErrorMessage } from "@/lib/api";
 import {
@@ -35,7 +35,11 @@ import NodePreview from "@/components/NodePreview";
 import EditorTopBar from "@/components/EditorTopBar";
 import WorldTree from "@/components/WorldTree";
 import ContextMenu from "@/components/ContextMenu";
-import { formatRange, normalizeEras, resolveCalendar, useChronology } from "@/lib/chrono";
+import {
+  existenceOf, formatRange, fromDayIndex, normalizeEras, nowIndexOf, resolveCalendar, startOfYear,
+  stateAt, useChronology,
+} from "@/lib/chrono";
+import TimeMachineBar from "@/components/TimeMachineBar";
 import { NodeIcon } from "@/components/NodeIcon";
 import { TextField } from "@/components/ui/text-field";
 import Sheet from "@/components/mobile/Sheet";
@@ -123,6 +127,10 @@ function EditorInner() {
   const [search, setSearch] = useState("");
   const [searchIdx, setSearchIdx] = useState(0);   // на каком совпадении стоим
   const [focusMode, setFocusMode] = useState(false); // показывать только соседей
+  // Машина времени: null — выключена, иначе год, на который смотрим холст.
+  const [timeYear, setTimeYear] = useState(null);
+  // «Показать в хронологии»: какой узел выбрать при открытии шкалы.
+  const [timelineFocus, setTimelineFocus] = useState(null);
   const [activeTags, setActiveTags] = useState(() => new Set());
   const [currentCanvas, setCurrentCanvas] = useState("");
   const [renamingCanvas, setRenamingCanvas] = useState(null); // { id, label } вкладки на правке
@@ -399,6 +407,30 @@ function EditorInner() {
     focusNode(nodeId);
   }, [rf, focusNode, activeCanvas, mainCanvasId, mobile]);
 
+  /** Из хронологии на холст: узел выделен и подведён к центру, панель не открываем. */
+  const showOnCanvas = useCallback((nodeId) => {
+    const found = rf.getNode(nodeId);
+    if (!found) return;
+    const canvasOf = found.data.canvas || mainCanvasId;
+    if (canvasOf !== activeCanvas) setCurrentCanvas(canvasOf);
+    setShowTimeline(false);
+    if (mobile) setMView("canvas");
+    setSelectedEdge(null);
+    setSelectedNode(found.data);
+    setRfNodes((nds) => nds.map((n) => (!!n.selected === (n.id === nodeId) ? n : { ...n, selected: n.id === nodeId })));
+    focusNode(nodeId);
+    // eslint-disable-next-line
+  }, [rf, focusNode, activeCanvas, mainCanvasId, mobile]);
+
+  /** С холста в хронологию: шкала откроется на первой дате узла. */
+  const showInTimeline = useCallback((nodeId) => {
+    setMenu(null);
+    setPanelOpen(false);
+    setPreviewId(null);
+    setTimelineFocus({ nodeId, nonce: Date.now() });
+    setShowTimeline(true);
+  }, []);
+
   /**
    * Перевести быстрый просмотр на другой узел — по связи или [[ссылке]] из
    * превью. Холст подводит узел к центру, масштаб не трогаем: человек выбрал
@@ -556,6 +588,22 @@ function EditorInner() {
     }
     // eslint-disable-next-line
   }, [id, typesById, activeCanvas, rfNodes.length, centerOfView, mapNode]);
+
+  /**
+   * Событие прямо со шкалы: дата существующему узлу или новый узел с датой.
+   * @returns id узла или null
+   */
+  const addTimelineEvent = useCallback(async ({ nodeId, title, typeId, key, date }) => {
+    const entry = { id: `d${Date.now().toString(36)}`, key: key || "date", label: "", start: date, end: null };
+    if (nodeId) {
+      setNodeDates(nodeId, [...(rf.getNode(nodeId)?.data?.dates || []), entry]);
+      toast.success(tr("timeline.add.attached"));
+      return nodeId;
+    }
+    const node = await addNode(typeId, undefined, { title, dates: [entry] });
+    if (node) toast.success(tr("timeline.add.created", { name: node.title }));
+    return node?.id || null;
+  }, [rf, setNodeDates, addNode, tr]);
 
   /* ---------------- свои шаблоны узлов ---------------- */
 
@@ -1573,6 +1621,28 @@ function EditorInner() {
   const chrono = useChronology(nodeFacts, settings);
   const calendar = useMemo(() => resolveCalendar(settings), [settings?.calendar]);
   const eras = useMemo(() => normalizeEras(settings?.eras), [settings?.eras]);
+  const worldNowT = useMemo(() => nowIndexOf(chrono, settings?.worldNow), [chrono, settings?.worldNow]);
+
+  /** Машина времени: узлы, которых в выбранный год нет в мире. */
+  const timeHidden = useMemo(() => {
+    if (timeYear == null) return null;
+    const range = [startOfYear(chrono.calendar, timeYear), startOfYear(chrono.calendar, timeYear + 1) - 1];
+    const out = new Set();
+    for (const [nodeId, list] of chrono.byNode) {
+      const state = stateAt(existenceOf(list), range);
+      if (state === "past" || state === "future") out.add(nodeId);
+    }
+    return out;
+  }, [timeYear, chrono]);
+
+  const openTimeMachine = useCallback(() => {
+    setMenu(null);
+    setShowTimeline(false);
+    if (mobile) setMView("canvas");
+    const cal = chrono.calendar;
+    const start = worldNowT ?? (chrono.bounds.empty ? 0 : (chrono.bounds.min + chrono.bounds.max) / 2);
+    setTimeYear(fromDayIndex(cal, start).y);
+  }, [chrono, worldNowT, mobile]);
 
   /**
    * Даты узла готовыми строками. Собираем на всю хронологию разом, а не в самой
@@ -1661,13 +1731,13 @@ function EditorInner() {
   /** Всё, что в проекции карточки не зависит от конкретного узла. */
   const nodeView = useMemo(() => ({
     activeCanvas, mainCanvasId, degrees, linksByNode, dateLinesByNode, canvases,
-    matchesTags, matchesSearch, neighbourIds, linkSource, expandedId,
+    matchesTags, matchesSearch, neighbourIds, linkSource, expandedId, timeHidden,
     highlight: !!q,
     cardMode: settings?.cardMode || "detailed",
     onOpenNode: openNodeById, onRename: renameNode, onResize: resizeNode,
     onFocusField: focusNodeField, onMeasure: requestMeasure,
   }), [activeCanvas, mainCanvasId, degrees, linksByNode, dateLinesByNode, canvases,
-      matchesTags, matchesSearch, neighbourIds, linkSource, expandedId, q,
+      matchesTags, matchesSearch, neighbourIds, linkSource, expandedId, q, timeHidden,
       settings?.cardMode, openNodeById, renameNode, resizeNode, focusNodeField,
       requestMeasure]);
 
@@ -1703,7 +1773,7 @@ function EditorInner() {
       const crossLinks = links?.cross || 0;
       const dateLines = v.dateLinesByNode.get(n.id) || EMPTY_LIST;
       const degree = v.degrees.get(n.id) || 0;
-      const dimmed = onCanvas && !passes;
+      const dimmed = onCanvas && (!passes || !!v.timeHidden?.has(n.id));
       const faded = !!v.neighbourIds && !v.neighbourIds.has(n.id);
       const hit = onCanvas && v.highlight && passes;
       const linking = v.linkSource === n.id;
@@ -2037,6 +2107,8 @@ function EditorInner() {
 
   /* ---------------- right-click menus ---------------- */
 
+  const hasDates = useCallback((nodeId) => chrono.byNode.has(nodeId), [chrono]);
+
   const {
     typeItems, canvasItems, cardModeItems, forPhone, expandedRef,
     openNodeMenu, openNodeMenuById, openEdgeMenu, openPaneMenu, openSelectionMenu,
@@ -2048,6 +2120,7 @@ function EditorInner() {
     relTypes, resizeNode, rf, rfEdges, runLayout, saveAsTemplate, selectAllVisible,
     setEdgeShape, setEdgeSides, setExpandedId, setLinkSource, setMenu, setNodeCardMode, setSelectedEdge,
     settings, straightenEdge, swapEdgeDirection, templateItems, tr, undo, undoRef, unlinkAll,
+    showInTimeline, hasDates,
   });
 
   /* ---------------- телефон ---------------- */
@@ -2119,13 +2192,14 @@ function EditorInner() {
     { id: "layout-circle", label: tr("palette.layoutCircle"), icon: Wand2, run: () => runLayout("circle") },
     { id: "fit", label: tr("palette.fit"), hint: "F", icon: Maximize2, run: () => rf.fitView({ padding: 0.2, duration: 400 }) },
     { id: "timeline", label: tr("palette.timeline"), icon: CalendarRange, run: () => { closeAll(); setShowTimeline(true); } },
+    { id: "time-machine", label: tr("timeMachine.title"), icon: History, run: () => { closeAll(); openTimeMachine(); } },
     { id: "settings", label: tr("palette.settings"), icon: Settings, run: () => { closeAll(); setShowSettings(true); } },
     ...exportCommands(tr, exportAs),
     { id: "undo", label: tr("palette.undo"), hint: "Ctrl+Z", icon: Undo2, run: undo },
     { id: "shortcuts", label: tr("palette.shortcuts"), hint: "?", icon: Keyboard, run: () => setShowShortcuts(true) },
     { id: "home", label: tr("palette.home"), icon: ArrowLeft, run: () => navigate("/") },
   ], [settings, addNode, runLayout, rf, closeAll, exportAs, undo, navigate, tr, createNodeType,
-      nodeTemplates, addFromTemplate]);
+      nodeTemplates, addFromTemplate, openTimeMachine]);
 
   // Как и allNodesForPicker: пока палитра закрыта, её список не нужен никому,
   // а стоит он объекта и замыкания на каждый узел проекта — на каждую правку.
@@ -2203,6 +2277,14 @@ function EditorInner() {
     },
     { id: "more-fit", label: tr("editor.fitView"), icon: Maximize2, hint: "F", onSelect: () => rf.fitView({ padding: 0.2, duration: 400 }) },
     { id: "more-focus", label: tr("editor.focusMode"), icon: Crosshair, hint: "G", checked: focusMode, onSelect: () => setFocusMode((v) => !v) },
+    {
+      id: "more-time",
+      label: tr("timeMachine.title"),
+      icon: History,
+      checked: timeYear != null,
+      disabled: chrono.bounds.empty,
+      onSelect: () => (timeYear != null ? setTimeYear(null) : openTimeMachine()),
+    },
     // Вид карточек — здесь, а не иконками в центре верхней панели: его
     // выбирают раз на проект, а две иконки без подписей были загадкой.
     {
@@ -2250,6 +2332,14 @@ function EditorInner() {
       items: LAYOUTS.map((l) => ({ id: `m-layout-${l.id}`, label: tr(l.labelKey), onSelect: () => runLayout(l.id) })),
     },
     { id: "m-focus", label: tr("editor.focusMode"), icon: Crosshair, checked: focusMode, onSelect: () => setFocusMode((v) => !v) },
+    {
+      id: "m-time",
+      label: tr("timeMachine.title"),
+      icon: History,
+      checked: timeYear != null,
+      disabled: chrono.bounds.empty,
+      onSelect: () => (timeYear != null ? setTimeYear(null) : openTimeMachine()),
+    },
     {
       id: "m-cards",
       label: tr("ctx.cardMode"),
@@ -2803,6 +2893,17 @@ function EditorInner() {
           </div>
         )}
 
+        {timeYear != null && !showTimeline && (!mobile || mView === "canvas") && (
+          <TimeMachineBar
+            chrono={chrono}
+            year={timeYear}
+            onYear={setTimeYear}
+            nowT={worldNowT}
+            count={timeHidden?.size || 0}
+            onClose={() => setTimeYear(null)}
+          />
+        )}
+
         {/* Таймлайн — второй вид того же мира, а не окно поверх всего: он
             занимает место холста под верхней панелью, а переключают его там же,
             где выбирают вид. Холст под ним остаётся смонтированным — вернуться
@@ -2821,6 +2922,10 @@ function EditorInner() {
               onOpenSettings={() => { setShowTimeline(false); setShowSettings(true); }}
               onChangeDates={setNodeDates}
               onClose={() => setShowTimeline(false)}
+              onAddEvent={addTimelineEvent}
+              onShowOnCanvas={showOnCanvas}
+              onChangeNow={(worldNow) => changeSettings({ ...settings, worldNow })}
+              focus={timelineFocus}
             />
           </Suspense>
         )}
@@ -2875,6 +2980,7 @@ function EditorInner() {
             mentions={mentions}
             onOpenNode={openNodeById}
             onCreateNode={(title) => addNode("note", undefined, { title })}
+            onShowInTimeline={showInTimeline}
             canvases={canvases}
             focusField={focusField}
             onLiveChange={patchNodeLocal}

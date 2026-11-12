@@ -62,6 +62,7 @@ export default function NodeEditorPanel({
   calendar, eras = [], fieldTemplates: projectFields, onChangeType, onLink, onUnlink,
   // Телефон: узел — страница. «Назад» (к прошлому узлу или к миру), меню типа и «⋯».
   onBack, onTypeMenu, onMore,
+  onShowInTimeline,
 }) {
   const tr = useT();
   const [draft, setDraft] = useState(null);
@@ -544,7 +545,19 @@ export default function NodeEditorPanel({
 
         {/* Даты узла — их может быть несколько — и холст, на котором он лежит. */}
         <div className="sw-sec sw-sec-dates">
-          <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.date")}</label>
+          <div className="flex items-center gap-2">
+            <label className="text-xs uppercase tracking-[0.2em] font-semibold sw-text-dim">{tr("node.date")}</label>
+            {onShowInTimeline && draft.dates?.length > 0 && (
+              <button
+                type="button"
+                className="sw-link-btn ml-auto"
+                onClick={() => onShowInTimeline(draft.id)}
+                data-testid="node-show-in-timeline"
+              >
+                {tr("ctx.showInTimeline")}
+              </button>
+            )}
+          </div>
           <div className="mt-2">
             <DateField
               value={draft.dates}

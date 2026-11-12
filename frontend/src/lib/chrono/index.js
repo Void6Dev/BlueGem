@@ -15,4 +15,8 @@ export * from "./eras";
 export * from "./resolve";
 export * from "./age";
 export * from "./scale";
+export * from "./edit";
+export * from "./conflicts";
+export * from "./existence";
+export * from "./story";
 export { useChronology } from "./useChronology";

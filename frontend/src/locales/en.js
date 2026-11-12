@@ -268,6 +268,7 @@ const en = {
   },
 
   ctx: {
+    showInTimeline: "Show on timeline",
     openInEditor: "Open in the editor",
     preview: "Quick look",
     previewHint: "double-click",
@@ -625,6 +626,11 @@ const en = {
     },
   },
 
+  timeMachine: {
+    title: "Time machine",
+    count: "faded: {count}",
+  },
+
   timeline: {
     title: "Timeline",
     emptyTitle: "The chronology is empty",
@@ -652,6 +658,45 @@ const en = {
     hintOpen: "open the node",
     undated: "Without a date",
     facet: { types: "Node type", tags: "Tags", eras: "Era", canvases: "Canvas", keys: "Date kind" },
+    view: { list: "List", lanes: "Lanes" },
+    lanes: { fit: "Whole timeline" },
+    conflicts: "Contradictions: {count} — show only these",
+    conflict: {
+      beforeBirth: "Happens before a participant was born: {name}",
+      afterDeath: "Happens after a participant died: {name}",
+      beforeOwnBirth: "Earlier than its own birth",
+      afterOwnDeath: "Later than its own death",
+      deathBeforeBirth: "Death before birth",
+      endBeforeStart: "Ends before it starts",
+    },
+    nudge: { day: "by a day", week: "by a week", month: "by a month", year: "by a year" },
+    showOnCanvas: "Show on canvas",
+    story: {
+      make: "Storyline",
+      label: "Storyline: {name}",
+    },
+    add: {
+      title: "Add event",
+      mode: { new: "New node", existing: "Existing" },
+      namePlaceholder: "What happened?",
+      findNode: "Find a node",
+      what: "This date is",
+      create: "Create event",
+      attach: "Add date to node",
+      created: "Event “{name}” added",
+      attached: "Date added",
+    },
+    now: {
+      title: "Now in the world",
+      unset: "Now: not set",
+      hint: "The day your game or story has reached. Everything after it is the future.",
+      marker: "Now",
+      year: "Year",
+      day: "Day",
+      commonCount: "Common year count",
+      step: { day: "day", week: "week", month: "month", year: "year" },
+      clear: "Clear “now”",
+    },
     reason: {
       empty: "no date",
       missing: "the event it refers to is gone",

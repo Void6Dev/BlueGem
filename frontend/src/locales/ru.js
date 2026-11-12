@@ -268,6 +268,7 @@ const ru = {
   },
 
   ctx: {
+    showInTimeline: "Показать в хронологии",
     openInEditor: "Открыть в редакторе",
     preview: "Быстрый просмотр",
     previewHint: "двойной клик",
@@ -625,6 +626,11 @@ const ru = {
     },
   },
 
+  timeMachine: {
+    title: "Машина времени",
+    count: "в тени: {count}",
+  },
+
   timeline: {
     title: "Таймлайн",
     emptyTitle: "Хронология пока пуста",
@@ -652,6 +658,45 @@ const ru = {
     hintOpen: "открыть узел",
     undated: "Без даты",
     facet: { types: "Тип узла", tags: "Теги", eras: "Эпоха", canvases: "Холст", keys: "Вид даты" },
+    view: { list: "Список", lanes: "Дорожки" },
+    lanes: { fit: "Вся шкала" },
+    conflicts: "Противоречия: {count} — показать только их",
+    conflict: {
+      beforeBirth: "Случилось до рождения участника: {name}",
+      afterDeath: "Случилось после смерти участника: {name}",
+      beforeOwnBirth: "Раньше собственного рождения",
+      afterOwnDeath: "Позже собственной смерти",
+      deathBeforeBirth: "Смерть раньше рождения",
+      endBeforeStart: "Конец раньше начала",
+    },
+    nudge: { day: "на день", week: "на неделю", month: "на месяц", year: "на год" },
+    showOnCanvas: "Показать на холсте",
+    story: {
+      make: "Сюжетная линия",
+      label: "Линия: {name}",
+    },
+    add: {
+      title: "Добавить событие",
+      mode: { new: "Новый узел", existing: "Существующий" },
+      namePlaceholder: "Что случилось?",
+      findNode: "Найти узел",
+      what: "Что это за дата",
+      create: "Создать событие",
+      attach: "Добавить дату узлу",
+      created: "Событие «{name}» добавлено",
+      attached: "Дата добавлена",
+    },
+    now: {
+      title: "Сейчас в мире",
+      unset: "Сейчас: не задано",
+      hint: "День, до которого дошла игра или рассказ. Всё позже него — будущее.",
+      marker: "Сейчас",
+      year: "Год",
+      day: "День",
+      commonCount: "Общий счёт лет",
+      step: { day: "день", week: "неделя", month: "месяц", year: "год" },
+      clear: "Убрать «сейчас»",
+    },
     reason: {
       empty: "даты нет",
       missing: "событие, на которое ссылается, пропало",

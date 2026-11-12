@@ -10,6 +10,7 @@ import { eraAt, yearsBetween } from "@/lib/chrono";
 export const ROW_H = 34;
 export const HEAD_H = 32;
 export const GAP_H = 28;
+export const NOW_H = 26;
 
 // Рельс времени как в графе истории правок: события одного и того же момента
 // расходятся по параллельным дорожкам и сходятся обратно. Пока они шли
@@ -39,7 +40,15 @@ export function useTimelineRows(items, groupBy, ctx) {
 }
 
 function build(items, groupBy, ctx) {
-  const { calendar, placedEras, typesById, noEraLabel, otherLabel, gapLabel } = ctx;
+  const { calendar, placedEras, typesById, noEraLabel, otherLabel, gapLabel, nowT, nowLabel } = ctx;
+  const hasNow = nowT != null && Number.isFinite(nowT);
+  let nowPlaced = false;
+  // «Сейчас» кампании — черта между прошлым и будущим. При группировке по
+  // типам у каждого раздела своё время, и черта встаёт в каждом.
+  const placeNow = (key) => {
+    push({ kind: "now", h: NOW_H, id: `now-${key}`, label: nowLabel });
+    nowPlaced = true;
+  };
 
   const rows = [];
   const events = [];
@@ -88,11 +97,13 @@ function build(items, groupBy, ctx) {
         color: section.color, count: section.items.length, note: section.note });
     }
     let previous = null;
+    if (groupBy === "type") nowPlaced = false;
     // Гроздь — подряд идущие события с одинаковым временем. Первое остаётся на
     // стволе, остальные уходят на свои дорожки и возвращаются на ствол под
     // последним из них.
     for (const cluster of clustersOf(section.items)) {
       const first = rows.length;
+      if (hasNow && !nowPlaced && cluster[0].t > nowT) placeNow(cluster[0].key);
       cluster.forEach((item, i) => {
         const gap = gapBetween(previous, item, typicalStep, calendar);
         if (gap) push({ kind: "gap", h: GAP_H, id: `${item.key}-gap`, label: gapLabel(gap) });
@@ -112,7 +123,9 @@ function build(items, groupBy, ctx) {
         maxLane = Math.max(maxLane, Math.min(cluster.length - 1, MAX_LANE));
       }
     }
+    if (hasNow && !nowPlaced && groupBy === "type" && section.items.length) placeNow(`${section.id}-end`);
   }
+  if (hasNow && !nowPlaced && items.length) placeNow("end");
 
   return { rows, height: y, events, indexByKey, maxSpan, headOf, maxLane };
 }

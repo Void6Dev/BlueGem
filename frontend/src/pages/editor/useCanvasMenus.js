@@ -9,6 +9,7 @@ import {
   Plus, Shapes, Crosshair, Unlink, Scissors, LayoutGrid, MoveHorizontal, Copy, Target, Layers,
   Trash2, Pencil, Eye, Maximize2, Minimize2, BookmarkPlus, Wand2, Map as MapIcon,
   SquareDashedMousePointer, ClipboardPaste, Undo2, ArrowLeftRight, Spline, Waypoints, Anchor, Minus,
+  CalendarRange,
 } from "lucide-react";
 import { DEFAULT_EDGE_COLOR, EDGE_SHAPES } from "@/lib/settings";
 import { LAYOUTS } from "@/lib/layout";
@@ -23,6 +24,7 @@ export function useCanvasMenus(ctx) {
     relTypes, resizeNode, rf, rfEdges, runLayout, saveAsTemplate, selectAllVisible,
     setEdgeShape, setEdgeSides, setExpandedId, setLinkSource, setMenu, setNodeCardMode, setSelectedEdge,
     settings, straightenEdge, swapEdgeDirection, templateItems, tr, undo, undoRef, unlinkAll,
+    showInTimeline, hasDates,
   } = ctx;
 
   /* ---------------- right-click menus ---------------- */
@@ -158,16 +160,22 @@ export function useCanvasMenus(ctx) {
         { id: "dup", label: tr("ctx.duplicate"), icon: Copy, hint: "Ctrl D", onSelect: () => duplicateNode(node.data) },
         { id: "save-tpl", label: tr("templates.saveAs"), icon: BookmarkPlus, onSelect: () => saveAsTemplate(node.data) },
         { id: "focus", label: tr("ctx.center"), icon: Target, onSelect: () => focusNode(node.id) },
+        ...(hasDates?.(node.id) ? [{
+          id: "in-timeline",
+          label: tr("ctx.showInTimeline"),
+          icon: CalendarRange,
+          onSelect: () => showInTimeline(node.id),
+        }] : []),
         ...(canvases.length > 1
           ? [{ id: "move-canvas", label: tr("ctx.moveToCanvas"), icon: Layers, items: canvasItems([node]) }]
           : []),
         { id: "sep-del", separator: true },
         { id: "del", label: tr("ctx.deleteNode"), icon: Trash2, danger: true, onSelect: () => deleteNode(node.id) },
-      ], ["open", "node-type", "link-new", "dup", "save-tpl", "move-canvas", "del"]),
+      ], ["open", "node-type", "link-new", "in-timeline", "dup", "save-tpl", "move-canvas", "del"]),
     });
   }, [rfEdges, nodeTitles, typeItems, canvasItems, cardModeItems, canvases.length, settings, changeNodeType,
       openNodeById, addConnectedNode, deleteSelectedEdge, unlinkAll, duplicateNode, focusNode, deleteNode,
-      resizeNode, peekNode, forPhone, saveAsTemplate]);
+      resizeNode, peekNode, forPhone, saveAsTemplate, hasDates, showInTimeline]);
 
   // Список в панели знает про узел только его id — сам узел спрашиваем здесь.
   // Так список не зависит от объектов React Flow и переживает перенос карточек

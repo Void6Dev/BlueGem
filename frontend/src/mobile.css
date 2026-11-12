@@ -1264,3 +1264,52 @@
   transition: color .15s;
 }
 .sw-cwheel-item.is-active { color: var(--sw-accent); font-weight: 600; }
+
+/* ---------------- хронология: правка и навигация на телефоне ---------------- */
+
+/* Мыши нет — инструменты ряда видны у выбранного ряда и крупнее. */
+.sw-is-mobile .tl-row-tool { width: 34px; height: 34px; border-radius: 10px; }
+.sw-is-mobile .tl-row-tools { display: none; }
+.sw-is-mobile .tl-row-on .tl-row-tools { display: inline-flex; opacity: 1; }
+.sw-is-mobile .tl-row-ages { display: none; }
+.sw-is-mobile .tl-row-on .tl-row-ages { display: inline-flex; }
+/* Шапка в три строки: год и «сейчас», инструменты, поиск. */
+.sw-is-mobile .tl-goto { order: 0; }
+.sw-is-mobile .tl-now { order: 1; min-width: 0; max-width: 50%; }
+.sw-is-mobile .tl-head-tools { order: 2; flex: 1 1 100%; flex-wrap: wrap; }
+.sw-is-mobile .tl-now-chip { height: 38px; max-width: 100%; border-radius: 12px; font-size: 13px; }
+.sw-is-mobile .tl-now-pop { position: fixed; left: 12px; right: 12px; top: auto; width: auto; }
+.sw-is-mobile .tl-now-steps .tl-now-step { height: 40px; font-size: 13px; }
+.sw-is-mobile .tl-seg .tl-tool { height: 32px; min-width: 34px; }
+.sw-is-mobile .tl-chips { padding: 6px 10px; }
+.sw-is-mobile .tl-story, .sw-is-mobile .tl-era-chip { height: 34px; font-size: 13px; }
+.sw-is-mobile .tl-inspect,
+.sw-is-mobile .tl-add {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: auto;
+  bottom: 0;
+  width: auto;
+  max-height: 70%;
+  z-index: 7;
+  border-radius: 16px 16px 0 0;
+  box-shadow: var(--sw-elev-4);
+  /* Последняя кнопка не должна прятаться под нижней панелью. */
+  padding-bottom: calc(var(--sw-mdock-h, 64px) + 40px + var(--sw-safe-bottom, 0px));
+}
+.sw-is-mobile .tl-add-input { font-size: 16px; height: 44px; }
+.sw-is-mobile .tl-inspect-action { height: 40px; font-size: 14px; }
+.sw-is-mobile .tl-nudge .tl-tool { min-width: 44px; height: 40px; }
+/* Полоса-обзор под палец: шире, и пузырь года над ней. */
+.sw-is-mobile .tl-minimap { width: 26px; touch-action: none; }
+.sw-is-mobile .tl-minimap-bubble { font-size: 15px; padding: 6px 12px; }
+.sw-is-mobile .tl-lanes-zoom { bottom: 16px; }
+.sw-is-mobile .tl-lanes-zoom .tl-tool { min-width: 40px; height: 40px; }
+.sw-is-mobile .tl-lane-name { font-size: 13px; padding: 0 8px; }
+/* Подсветка связей работает по наведению — на телефоне её кнопка лишняя. */
+.sw-is-mobile [data-testid="timeline-links"] { display: none; }
+.sw-is-mobile .tl-head-tools { gap: 2px; flex-wrap: nowrap; }
+.sw-is-mobile .tl-head-tools > .tl-tool { min-width: 34px; }
+.sw-is-mobile .tl-head-tools .tl-select { max-width: 6.5rem; }
+.sw-is-mobile .tl-head-tools > [data-testid="close-timeline-btn"] { margin-left: auto; }

@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { TextField } from "@/components/ui/text-field";
 import {
-  CalendarRange, ChevronDown, CornerDownLeft, Filter, Link2, Pencil,
-  Search, Settings2, X,
+  AlertTriangle, CalendarRange, ChevronDown, CornerDownLeft, Filter, GitBranch, LayoutList,
+  Link2, MapPin, Minus, Pencil, Plus, Rows3, Search, Settings2, X,
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { isMobileNow } from "@/lib/platform";
 import {
-  agesDuring, eraAt, formatAt, formatRange, lifespan, startOfYear, yearsBetween,
+  ageAt, agesDuring, BIRTH_KEY, canMove, DEATH_KEY, eraAt, findConflicts, formatAt, formatDate,
+  formatRange, lifespan, moveDateTo, movedBy, normalizeDate, nowIndexOf, nudgeDate, shiftDate,
+  startOfYear, stepOf, storylineOf, valueAt, yearsBetween,
 } from "@/lib/chrono";
 import { NodeIcon } from "@/components/NodeIcon";
 import { DateValueEditor } from "@/components/chrono/DateField";
@@ -15,6 +17,9 @@ import { EventRow } from "./EventRow";
 import { TimelineMinimap } from "./TimelineMinimap";
 import { railWidth, TimelineRail } from "./TimelineRail";
 import { HEAD_H, ROW_H, useTimelineRows } from "./useTimelineRows";
+import AddEventPanel from "./AddEventPanel";
+import NowControl from "./NowControl";
+import TimelineLanes from "./TimelineLanes";
 import "./timeline.css";
 
 // Шкала времени.
@@ -32,6 +37,13 @@ import "./timeline.css";
 // раньше был пустой отрезок шкалы.
 
 const GROUPINGS = ["none", "type", "era"];
+const VIEW_KEY = "bluegem:timelineView";
+// Сколько возрастов участников показывать прямо в ряду: больше — шум.
+const AGES_IN_ROW = 2;
+
+const readView = () => {
+  try { return localStorage.getItem(VIEW_KEY) === "lanes" ? "lanes" : "list"; } catch { return "list"; }
+};
 // Сколько рядов дорисовываем за краями кадра, чтобы прокрутка не мигала.
 const OVERSCAN = 8;
 
@@ -39,8 +51,10 @@ export default function TimelinePanel({
   leaving = false,
   chrono, settings, edges, typesById, allNodes,
   onOpenNode, onOpenSettings, onChangeDates, onClose,
+  onAddEvent, onShowOnCanvas, onChangeNow, focus,
 }) {
   const tr = useT();
+  const mobile = isMobileNow();
   const listRef = useRef(null);
   const [viewH, setViewH] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
@@ -57,9 +71,37 @@ export default function TimelinePanel({
   const [filters, setFilters] = useState(() => ({
     types: new Set(), tags: new Set(), eras: new Set(), canvases: new Set(), keys: new Set(),
   }));
+  const [view, setViewState] = useState(readView);
+  const setView = useCallback((v) => {
+    setViewState(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* только удобство */ }
+  }, []);
+  // Панель добавления: null — закрыта, иначе {date} — с чего начать дату.
+  const [adding, setAdding] = useState(null);
+  // Сюжетная линия: узел и всё, что с ним связано, на глубину depth.
+  const [story, setStory] = useState(null);
+  const [onlyConflicts, setOnlyConflicts] = useState(false);
+  const [drag, setDrag] = useState(null);
+  const [lanesJump, setLanesJump] = useState(null);
 
   const calendar = chrono.calendar;
   const placedEras = chrono.eras.placed;
+  const nowT = useMemo(() => nowIndexOf(chrono, settings?.worldNow), [chrono, settings?.worldNow]);
+  const conflicts = useMemo(() => findConflicts(chrono, edges), [chrono, edges]);
+  const storySet = useMemo(
+    () => (story ? storylineOf(edges, story.rootId, story.depth) : null),
+    [story, edges],
+  );
+  const neighbours = useMemo(() => {
+    const map = new Map();
+    for (const e of edges || []) {
+      if (!map.has(e.source)) map.set(e.source, new Set());
+      if (!map.has(e.target)) map.set(e.target, new Set());
+      map.get(e.source).add(e.target);
+      map.get(e.target).add(e.source);
+    }
+    return map;
+  }, [edges]);
 
   const ctx = useMemo(() => ({
     eraName: (id) => chrono.eras.byId.get(id)?.name || "",
@@ -71,13 +113,17 @@ export default function TimelinePanel({
 
   const items = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return chrono.items.filter((item) => matches(item, filters, needle, chrono));
-  }, [chrono, filters, search]);
+    return chrono.items.filter((item) => matches(item, filters, needle, chrono)
+      && (!storySet || storySet.has(item.nodeId))
+      && (!onlyConflicts || conflicts.has(item.key)));
+  }, [chrono, filters, search, storySet, onlyConflicts, conflicts]);
 
   const undated = useMemo(() => {
+    if (onlyConflicts) return [];
     const needle = search.trim().toLowerCase();
-    return chrono.undated.filter((item) => matches(item, filters, needle, chrono));
-  }, [chrono, filters, search]);
+    return chrono.undated.filter((item) => matches(item, filters, needle, chrono)
+      && (!storySet || storySet.has(item.nodeId)));
+  }, [chrono, filters, search, storySet, onlyConflicts]);
 
   // --- ряды -------------------------------------------------------------
   const gapLabel = useCallback((gap) => (gap.years >= 1
@@ -89,7 +135,9 @@ export default function TimelinePanel({
     noEraLabel: tr("timeline.noEra"),
     otherLabel: tr("editor.otherType"),
     gapLabel,
-  }), [calendar, placedEras, typesById, tr, gapLabel]);
+    nowT,
+    nowLabel: tr("timeline.now.marker"),
+  }), [calendar, placedEras, typesById, tr, gapLabel, nowT]);
 
   const {
     rows, height, events, indexByKey, maxSpan, headOf, maxLane,
@@ -228,6 +276,178 @@ export default function TimelinePanel({
     return tr("timeline.spanDays", { count: Math.round(item.t2 - item.t) });
   }, [calendar, tr]);
 
+  // --- возраст участников в ряду ----------------------------------------
+  // Кэш на хронологию: массив возрастов уходит в ряд пропсом, и тот же ряд
+  // должен получать тот же массив, иначе memo ряда бесполезен.
+  const agesCache = useMemo(() => new Map(), [chrono, neighbours]);
+  const agesOf = useCallback((item) => {
+    if (agesCache.has(item.key)) return agesCache.get(item.key);
+    let out = null;
+    const key = item.entry.key || "date";
+    if (key !== BIRTH_KEY && key !== DEATH_KEY && item.t != null) {
+      const list = [];
+      for (const otherId of neighbours.get(item.nodeId) || []) {
+        const got = ageAt(chrono, otherId, item.t);
+        if (got) list.push({ nodeId: otherId, title: chrono.byNode.get(otherId)?.[0]?.node?.title || "", ...got });
+      }
+      list.sort((a, b) => b.age - a.age);
+      if (list.length) out = list.slice(0, AGES_IN_ROW);
+    }
+    agesCache.set(item.key, out);
+    return out;
+  }, [agesCache, neighbours, chrono]);
+
+  // --- противоречия ------------------------------------------------------
+  const conflictLines = useCallback((list) => (list || []).map((c) => tr(`timeline.conflict.${c.code}`, {
+    name: c.otherId ? chrono.byNode.get(c.otherId)?.[0]?.node?.title || tr("common.untitled") : "",
+  })), [chrono, tr]);
+
+  // --- правка дат ----------------------------------------------------------
+  const eraOf = useCallback((value) => (value?.eraId ? chrono.eras.byId.get(value.eraId) : null), [chrono]);
+
+  /** Записать новую дату записи: начало и, если есть, конец со сдвигом. */
+  const commitEntry = useCallback((item, nextStart, delta) => {
+    const dates = (item.node?.dates || []).map((entry) => {
+      if (entry.id !== item.entryId) return entry;
+      const end = normalizeDate(entry.end);
+      const movedEnd = end && delta && canMove(end) ? shiftDate(calendar, end, delta, eraOf(end)) : entry.end;
+      return { ...entry, start: nextStart, end: movedEnd ?? entry.end };
+    });
+    onChangeDates?.(item.nodeId, dates);
+  }, [calendar, eraOf, onChangeDates]);
+
+  const nudge = useCallback((item, steps) => {
+    const start = normalizeDate(item.entry.start);
+    if (!canMove(start)) return;
+    const next = nudgeDate(calendar, start, steps, eraOf(start));
+    const dates = (item.node?.dates || []).map((entry) => {
+      if (entry.id !== item.entryId) return entry;
+      const end = normalizeDate(entry.end);
+      const movedEnd = end && canMove(end) ? nudgeDate(calendar, end, steps, eraOf(end)) : entry.end;
+      return { ...entry, start: next, end: movedEnd ?? entry.end };
+    });
+    onChangeDates?.(item.nodeId, dates);
+  }, [calendar, eraOf, onChangeDates]);
+
+  // Перетаскивание за ручку: вертикаль списка переводится во время по
+  // соседним событиям — между двумя рядами дата ложится пропорционально.
+  const eventsRef = useRef(events);
+  eventsRef.current = events;
+  const onGripDown = useCallback((e, item) => {
+    const start = normalizeDate(item.entry.start);
+    const list = listRef.current;
+    const content = list?.querySelector(".tl-content");
+    if (!canMove(start) || !content || item.t == null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rows = eventsRef.current.filter((r) => r.item.key !== item.key && r.item.t != null);
+    const yearLen = calendar.months.reduce((n, m) => n + m.days, 0) || 360;
+    const timeAt = (y) => {
+      let prev = null;
+      let next = null;
+      for (const r of rows) {
+        const cy = r.y + r.h / 2;
+        if (cy <= y) prev = { cy, t: r.item.t };
+        else { next = { cy, t: r.item.t }; break; }
+      }
+      if (prev && next) return next.cy === prev.cy ? prev.t : prev.t + ((next.t - prev.t) * (y - prev.cy)) / (next.cy - prev.cy);
+      if (prev) return prev.t + ((y - prev.cy) / ROW_H) * yearLen;
+      if (next) return next.t - ((next.cy - y) / ROW_H) * yearLen;
+      return item.t;
+    };
+    const ctxText = { ...ctx, selfId: item.nodeId };
+    const startY = e.clientY;
+    let latest = null;
+    let auto = 0;
+    const update = (clientY) => {
+      const y = clientY - content.getBoundingClientRect().top;
+      const target = timeAt(y);
+      const value = moveDateTo(calendar, start, item.t, target, eraOf(start));
+      const real = movedBy(calendar, start, value, eraOf(start));
+      latest = { value, delta: real ?? Math.round(target - item.t), moved: Math.abs(clientY - startY) > 4 };
+      setDrag({ key: item.key, y, text: value ? formatDate(calendar, value, ctxText) : "" });
+    };
+    const edge = (clientY) => {
+      const box = list.getBoundingClientRect();
+      const dy = clientY < box.top + 40 ? -14 : clientY > box.bottom - 40 ? 14 : 0;
+      cancelAnimationFrame(auto);
+      if (!dy) return;
+      const tick = () => { list.scrollTop += dy; update(clientY); auto = requestAnimationFrame(tick); };
+      auto = requestAnimationFrame(tick);
+    };
+    const move = (ev) => { ev.preventDefault(); update(ev.clientY); edge(ev.clientY); };
+    const up = () => {
+      cancelAnimationFrame(auto);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      setDrag(null);
+      if (latest?.moved && latest.value) commitEntry(item, latest.value, latest.delta);
+    };
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    setPicked(item);
+    update(e.clientY);
+  }, [calendar, ctx, eraOf, commitEntry]);
+
+  // --- добавление ----------------------------------------------------------
+  const startAdding = useCallback((item) => {
+    if (item?.t != null) {
+      const precision = item.start?.precision === "era" || !item.start?.precision ? "year" : item.start.precision;
+      const era = eraOf(item.entry.start);
+      setAdding({ date: valueAt(calendar, item.t, precision, era?.countsYears ? era : null) });
+    } else if (nowT != null) {
+      setAdding({ date: { kind: "exact", ...settings.worldNow } });
+    } else {
+      setAdding({ date: { kind: "exact" } });
+    }
+    setPicked(null);
+  }, [calendar, eraOf, nowT, settings]);
+
+  const submitAdd = useCallback(async (payload) => {
+    await onAddEvent?.(payload);
+    setAdding(null);
+  }, [onAddEvent]);
+
+  // --- переход извне («Показать в хронологии») ---------------------------
+  const focusSeen = useRef(null);
+  useEffect(() => {
+    if (!focus || focusSeen.current === focus.nonce) return;
+    const item = (chrono.byNode.get(focus.nodeId) || []).find((x) => x.t != null);
+    if (!item) return;
+    focusSeen.current = focus.nonce;
+    setPicked(item);
+    setAdding(null);
+    const at = indexByKey.get(item.key);
+    if (at != null) requestAnimationFrame(() => scrollToRow(events[at], "center"));
+  }, [focus, chrono, indexByKey, events, scrollToRow]);
+
+  const goToEraAny = useCallback((era) => {
+    if (view === "lanes") setLanesJump({ t: era.startT, nonce: Date.now() });
+    else goToEra(era);
+  }, [view, goToEra]);
+
+  const goToYearAny = useCallback((year) => {
+    if (view !== "lanes") return goToYear(year);
+    if (!Number.isFinite(year)) return false;
+    setLanesJump({ t: startOfYear(calendar, year), nonce: Date.now() });
+    return true;
+  }, [view, goToYear, calendar]);
+
+  /** Год под точкой списка — для пузыря при протяжке полосы-обзора. */
+  const labelAt = useCallback((y) => {
+    if (!rows.length) return "";
+    const at = Math.min(lowerBound(rows, y), rows.length - 1);
+    for (let i = at; i < rows.length; i++) {
+      if (rows[i].kind === "event") return formatAt(calendar, placedEras, rows[i].item.t, "year");
+    }
+    return "";
+  }, [rows, calendar, placedEras]);
+
+  const pickRow = useCallback((item) => { setAdding(null); setPicked(item); }, []);
+  const conflictTextOf = useCallback((key) => conflictLines(conflicts.get(key)).join("\n"), [conflictLines, conflicts]);
+
   const empty = !items.length && !undated.length;
   // Пусто по-разному: дат нет вообще — или они есть, но их отсеяли поиск и
   // фильтры. Во втором случае звать «добавьте дату» было бы враньём.
@@ -263,9 +483,57 @@ export default function TimelinePanel({
           )}
         </label>
 
-        <GoTo eras={placedEras} onYear={goToYear} onEra={goToEra} />
+        <GoTo eras={placedEras} onYear={goToYearAny} onEra={goToEraAny} />
+
+        <NowControl chrono={chrono} value={settings?.worldNow || null} onChange={(v) => onChangeNow?.(v)} />
 
         <div className="tl-head-tools">
+          {onAddEvent && (
+            <button
+              type="button"
+              onClick={() => (adding ? setAdding(null) : startAdding(null))}
+              className={`tl-tool${adding ? " tl-tool-on" : ""}`}
+              title={tr("timeline.add.title")}
+              data-testid="timeline-add"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          )}
+
+          <div className="tl-seg" role="group">
+            <button
+              type="button"
+              onClick={() => setView("list")}
+              className={`tl-tool${view === "list" ? " tl-tool-on" : ""}`}
+              title={tr("timeline.view.list")}
+              data-testid="timeline-view-list"
+            >
+              <LayoutList className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("lanes")}
+              className={`tl-tool${view === "lanes" ? " tl-tool-on" : ""}`}
+              title={tr("timeline.view.lanes")}
+              data-testid="timeline-view-lanes"
+            >
+              <Rows3 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {conflicts.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setOnlyConflicts((v) => !v)}
+              className={`tl-tool tl-tool-warn${onlyConflicts ? " tl-tool-on" : ""}`}
+              title={tr("timeline.conflicts", { count: conflicts.size })}
+              data-testid="timeline-conflicts"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span className="font-mono-sw">{conflicts.size}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setRailOpen((v) => !v)}
@@ -277,7 +545,7 @@ export default function TimelinePanel({
             {filtersOn && <span className="tl-tool-badge" />}
           </button>
 
-          <select
+          {view === "list" && <select
             value={groupBy}
             onChange={(e) => setGroupBy(e.target.value)}
             className="tl-select"
@@ -287,7 +555,7 @@ export default function TimelinePanel({
             {GROUPINGS.map((g) => (
               <option key={g} value={g}>{tr(`timeline.group.${g}`)}</option>
             ))}
-          </select>
+          </select>}
 
           <button
             type="button"
@@ -308,6 +576,48 @@ export default function TimelinePanel({
         </div>
       </header>
 
+      {(story || (mobile && placedEras.length > 0)) && (
+        <div className="tl-chips">
+          {story && (
+            <span className="tl-story" data-testid="timeline-story-chip">
+              <GitBranch className="w-3.5 h-3.5" />
+              <span className="truncate">
+                {tr("timeline.story.label", { name: chrono.byNode.get(story.rootId)?.[0]?.node?.title || tr("common.untitled") })}
+              </span>
+              {[1, 2].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  className={`tl-story-depth${story.depth === d ? " tl-story-depth-on" : ""}`}
+                  onClick={() => setStory((s) => ({ ...s, depth: d }))}
+                  data-testid={`timeline-story-depth-${d}`}
+                >
+                  {d}
+                </button>
+              ))}
+              <button type="button" className="tl-story-x" onClick={() => setStory(null)} data-testid="timeline-story-clear">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {/* Эпохи лентой — на телефоне это самый быстрый путь через века:
+              выпадающий список прячет их за лишним касанием. */}
+          {mobile && placedEras.map((era) => (
+            <button
+              key={era.id}
+              type="button"
+              className="tl-era-chip"
+              style={{ "--tl-tone": era.color }}
+              onClick={() => goToEraAny(era)}
+              data-testid={`timeline-era-chip-${era.id}`}
+            >
+              <span className="tl-dot-sm" style={{ background: era.color }} />
+              <span className="truncate">{era.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="tl-body">
         {railOpen && (
           <FilterRail
@@ -320,6 +630,18 @@ export default function TimelinePanel({
         )}
 
         <div className="tl-main">
+          {view === "lanes" && !nothingDated ? (
+            <TimelineLanes
+              items={items}
+              chrono={chrono}
+              nowT={nowT}
+              picked={picked}
+              onPick={(item) => { setAdding(null); setPicked(item); }}
+              conflicts={conflicts}
+              jump={lanesJump}
+              mobile={mobile}
+            />
+          ) : (<>
           {/* Полоса подсказок: чем управлять списком, видно сразу — иначе о
               стрелках и Enter узнают случайно или никогда. */}
           <div className="tl-hint">
@@ -409,6 +731,15 @@ export default function TimelinePanel({
                       </div>
                     );
                   }
+                  if (row.kind === "now") {
+                    return (
+                      <div key={row.id} className="tl-now-row" style={{ top: row.y, height: row.h }} data-testid="timeline-now-row">
+                        <span className="tl-now-line" />
+                        <span className="tl-now-text">{row.label}</span>
+                        <span className="tl-now-line" />
+                      </div>
+                    );
+                  }
                   if (row.kind === "gap") {
                     return (
                       <div key={row.id} className="tl-gap-row" style={{ top: row.y, height: row.h }}>
@@ -435,11 +766,25 @@ export default function TimelinePanel({
                       highlighted={!!linkedIds?.has(item.nodeId)}
                       dimmed={!!linkedIds && !linkedIds.has(item.nodeId) && (showLinks || !!hovered)}
                       lane={row.lane}
-                      onPick={setPicked}
+                      onPick={pickRow}
                       onHover={setHovered}
+                      conflicts={conflicts.get(item.key)}
+                      conflictText={conflictTextOf(item.key)}
+                      ages={agesOf(item)}
+                      future={nowT != null && item.t > nowT}
+                      movable={!!onChangeDates && canMove(item.entry.start)}
+                      dragging={drag?.key === item.key}
+                      onGripDown={onGripDown}
+                      onAdd={onAddEvent ? startAdding : null}
                     />
                   );
                 })}
+                {drag && (
+                  <div className="tl-drag-ghost" style={{ top: drag.y }} data-testid="timeline-drag-ghost">
+                    <span className="tl-drag-line" />
+                    <span className="tl-drag-label font-mono-sw">{drag.text}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -450,11 +795,24 @@ export default function TimelinePanel({
             viewH={viewH}
             scrollTop={scrollTop}
             onJump={(top) => listRef.current?.scrollTo({ top: Math.max(0, top) })}
+            labelAt={labelAt}
           />
           </div>
+          </>)}
         </div>
 
-        {picked && (
+        {adding && (
+          <AddEventPanel
+            key={JSON.stringify(adding.date)}
+            chrono={chrono}
+            allNodes={allNodes}
+            types={settings?.nodeTypes || Object.values(typesById || {})}
+            initialDate={adding.date}
+            onSubmit={submitAdd}
+            onClose={() => setAdding(null)}
+          />
+        )}
+        {picked && !adding && (
           <Inspector
             item={picked}
             chrono={chrono}
@@ -464,10 +822,16 @@ export default function TimelinePanel({
             onClose={() => setPicked(null)}
             onOpenNode={onOpenNode}
             onChangeDates={onChangeDates}
+            nowT={nowT}
+            conflicts={conflictLines(conflicts.get(picked.key))}
+            onNudge={nudge}
+            onShowOnCanvas={onShowOnCanvas}
+            onStory={(nodeId) => setStory({ rootId: nodeId, depth: story?.depth || 1 })}
+            storyOn={story?.rootId === picked.nodeId}
             onGoTo={(item) => {
               setPicked(item);
               const at = indexByKey.get(item.key);
-              if (at != null) scrollToRow(events[at], "center");
+              if (at != null && view === "list") scrollToRow(events[at], "center");
             }}
           />
         )}
@@ -658,7 +1022,10 @@ function FilterRail({ facets, filters, onChange, typesById, eras }) {
 
 // ------------------------------------------------------------ инспектор
 
-function Inspector({ item, chrono, ctx, edges, allNodes, onClose, onOpenNode, onChangeDates, onGoTo }) {
+function Inspector({
+  item, chrono, ctx, edges, allNodes, onClose, onOpenNode, onChangeDates, onGoTo,
+  nowT, conflicts, onNudge, onShowOnCanvas, onStory, storyOn,
+}) {
   const tr = useT();
   const node = item.node || {};
   const era = item.eraId ? chrono.eras.byId.get(item.eraId) : eraAt(chrono.eras.placed, item.t);
@@ -686,7 +1053,7 @@ function Inspector({ item, chrono, ctx, edges, allNodes, onClose, onOpenNode, on
     return agesDuring(chrono, item.t, only);
   }, [chrono, item, linked]);
 
-  const own = useMemo(() => lifespan(chrono, item.nodeId), [chrono, item.nodeId]);
+  const own = useMemo(() => lifespan(chrono, item.nodeId, nowT), [chrono, item.nodeId, nowT]);
 
   const resolvedText = useMemo(() => {
     const plain = item.start?.kind === "exact" && !item.entry.start?.rel;
@@ -706,6 +1073,8 @@ function Inspector({ item, chrono, ctx, edges, allNodes, onClose, onOpenNode, on
   }, [node.dates, item, onChangeDates]);
 
   const canEdit = !!onChangeDates && !!node.dates?.some((e) => e.id === item.entryId);
+  const movable = canEdit && canMove(item.entry.start);
+  const step = stepOf(item.entry.start);
 
   return (
     <aside className="tl-inspect sw-scroll-y" data-testid="timeline-inspector">
@@ -730,6 +1099,30 @@ function Inspector({ item, chrono, ctx, edges, allNodes, onClose, onOpenNode, on
         )}
       </div>
       {resolvedText && <div className="tl-inspect-resolved font-mono-sw">= {resolvedText}</div>}
+
+      {/* Сдвиг на шаг своей точности: «на год позже» — без открытия редактора. */}
+      {movable && (
+        <div className="tl-nudge">
+          <button type="button" className="tl-tool" onClick={() => onNudge(item, -1)} data-testid="timeline-nudge-minus">
+            <Minus className="w-3.5 h-3.5" />
+          </button>
+          <span className="tl-nudge-step">{tr(`timeline.nudge.${step}`)}</span>
+          <button type="button" className="tl-tool" onClick={() => onNudge(item, 1)} data-testid="timeline-nudge-plus">
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {conflicts?.length > 0 && (
+        <div className="tl-inspect-warn" data-testid="timeline-inspector-conflicts">
+          {conflicts.map((line) => (
+            <div key={line} className="tl-inspect-warn-row">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span>{line}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Правка даты здесь, а не всплывающим окном над рядом: панель узла ради
           одной даты открывать не нужно, а всплывающему тут негде встать —
@@ -800,6 +1193,27 @@ function Inspector({ item, chrono, ctx, edges, allNodes, onClose, onOpenNode, on
           ))}
         </div>
       )}
+
+      <div className="tl-inspect-actions">
+        {onShowOnCanvas && (
+          <button
+            type="button"
+            className="tl-inspect-action"
+            onClick={() => onShowOnCanvas(item.nodeId)}
+            data-testid="timeline-show-canvas"
+          >
+            <MapPin className="w-3.5 h-3.5" /> {tr("timeline.showOnCanvas")}
+          </button>
+        )}
+        <button
+          type="button"
+          className={`tl-inspect-action${storyOn ? " tl-inspect-action-on" : ""}`}
+          onClick={() => onStory(item.nodeId)}
+          data-testid="timeline-story"
+        >
+          <GitBranch className="w-3.5 h-3.5" /> {tr("timeline.story.make")}
+        </button>
+      </div>
 
       <button
         type="button"

@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 
 // Полоса-обзор справа, как в редакторе кода.
 //
@@ -13,8 +13,11 @@ import { memo, useCallback, useMemo, useRef } from "react";
 
 const TICK_H = 2;
 
-function TimelineMinimapInner({ rows, height, viewH, scrollTop, onJump }) {
+function TimelineMinimapInner({ rows, height, viewH, scrollTop, onJump, labelAt }) {
   const ref = useRef(null);
+  // Пузырь с годом во время протяжки: на телефоне полоса — главный способ
+  // пролететь через века, и без подписи не понять, куда прилетишь.
+  const [bubble, setBubble] = useState(null);
 
   // Высоту полосы берём равной высоте списка: одна и та же дробь и здесь,
   // и в прокрутке, — иначе рамка окна врёт.
@@ -38,13 +41,15 @@ function TimelineMinimapInner({ rows, height, viewH, scrollTop, onJump }) {
     // Целимся серединой окна в место нажатия: попасть хотят в событие под
     // курсором, а не поставить его в самый верх экрана.
     onJump(ratio * height - viewH / 2);
-  }, [height, viewH, onJump]);
+    if (labelAt) setBubble({ y: clientY - box.top, text: labelAt(ratio * height) });
+  }, [height, viewH, onJump, labelAt]);
 
   const onPointerDown = useCallback((e) => {
     e.preventDefault();
     jumpTo(e.clientY);
     const move = (ev) => jumpTo(ev.clientY);
     const up = () => {
+      setBubble(null);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
@@ -76,6 +81,11 @@ function TimelineMinimapInner({ rows, height, viewH, scrollTop, onJump }) {
         style={{ top: windowTop, height: windowH }}
         data-testid="timeline-minimap-window"
       />
+      {bubble?.text && (
+        <span className="tl-minimap-bubble font-mono-sw" style={{ top: bubble.y }} data-testid="timeline-minimap-bubble">
+          {bubble.text}
+        </span>
+      )}
     </div>
   );
 }
