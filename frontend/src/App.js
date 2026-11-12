@@ -10,6 +10,7 @@ const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Editor = lazy(() => import("@/pages/Editor"));
 import { isDesktop, onLanguage, onMenuCommand, onOpenProject, takePendingProject } from "@/lib/desktop";
 import { openProjectText, openResultMessage } from "@/lib/openProject";
+import { api, usesCore } from "@/lib/api";
 import { folderSync } from "@/lib/sync/folderSync";
 import { setLanguage, t, useT } from "@/lib/i18n";
 import {
@@ -117,6 +118,17 @@ function NativeBridge() {
     navigate("/");
     return true;
   }), [navigate]);
+
+  // Первый запуск версии с ядром на Rust: проекты переезжают из IndexedDB.
+  // Сообщаем об этом один раз — и о неудаче тоже: старые данные остались на
+  // месте, перенос повторится при следующем запуске.
+  useEffect(() => {
+    if (!usesCore) return;
+    api.migration().then(({ moved, failed }) => {
+      if (moved) toast.success(t("mobile.coreMigrated", { count: t("count.projects", { count: moved }) }));
+      if (failed) toast.error(t("mobile.coreMigrateFailed", { count: failed }));
+    });
+  }, []);
 
   useEffect(() => {
     if (!isNative) return undefined;

@@ -16,31 +16,19 @@
 //! BG_FATAL / BG_STOPPED в stdout, код 98 — порт занят, 99 — прочий отказ.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-mod catalog;
-mod error;
-mod routes;
-mod store;
-
+use bluegem_core::{emit, error, routes, store};
 use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::http::{header, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::Router;
-use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 
 const EXIT_PORT_BUSY: i32 = 98;
 const EXIT_FAILED: i32 = 99;
-
-/// Строка для лога Electron. Никогда не падает — это всего лишь лог.
-pub fn emit(line: &str) {
-    let mut out = std::io::stdout();
-    let _ = writeln!(out, "{line}");
-    let _ = out.flush();
-}
 
 fn env(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
@@ -160,7 +148,7 @@ fn cors_layer() -> CorsLayer {
 }
 
 fn build_app(state: routes::AppState) -> Router {
-    let mut app = routes::api_router(state);
+    let mut app = routes::core_router(state);
     let static_dir = env("BG_STATIC_DIR");
     if !static_dir.is_empty() && Path::new(&static_dir).is_dir() {
         let root = Arc::new(PathBuf::from(&static_dir));
@@ -172,12 +160,9 @@ fn build_app(state: routes::AppState) -> Router {
     if !token.is_empty() {
         app = app.layer(middleware::from_fn_with_state(Arc::new(token), require_token));
     }
-    // Импорт проекта с картинками и замена содержимого при синхронизации —
-    // это мегабайты: штатного предела в 2 МБ на тело запроса мало.
-    app.layer(axum::extract::DefaultBodyLimit::max(1024 * 1024 * 1024))
-        // CORS — самым внешним слоем: предварительные запросы отвечаются до
-        // проверки токена.
-        .layer(cors_layer())
+    // CORS — самым внешним слоем: предварительные запросы отвечаются до
+    // проверки токена.
+    app.layer(cors_layer())
 }
 
 /// Сторож: оболочка держит открытым наш stdin. Канал оборвался — оболочки

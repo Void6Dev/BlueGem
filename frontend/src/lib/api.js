@@ -4,13 +4,20 @@ import { getLanguage, t } from "@/lib/i18n";
 import { isNative } from "@/lib/platform";
 import { localApi } from "@/lib/local/api";
 import { setImageResolver } from "@/lib/images";
+import { coreAdapter, coreImage, hasCore } from "@/lib/native/core";
+import { migrateIndexedDbToCore } from "@/lib/native/migrate";
 
 /**
- * Данные без сервера: на телефоне (Capacitor) и в сборке с
- * REACT_APP_STORAGE=local проекты живут в IndexedDB прямо в приложении.
- * Методы те же самые — остальному интерфейсу всё равно, куда уходит запрос.
+ * Где живут данные:
+ *   * на компьютере — встроенный сервер (Rust, server/) по HTTP;
+ *   * на телефоне — то же ядро на Rust внутри приложения (lib/native/core):
+ *     тот же API, только запрос идёт в плагин, а не в сеть;
+ *   * в сборке с REACT_APP_STORAGE=local без ядра (веб-версия, старое
+ *     приложение без плагина) — IndexedDB прямо в браузере (lib/local).
+ * Методы везде те же — остальному интерфейсу всё равно, куда уходит запрос.
  */
-export const isLocalStorage = isNative || process.env.REACT_APP_STORAGE === "local";
+export const usesCore = hasCore;
+export const isLocalStorage = !usesCore && (isNative || process.env.REACT_APP_STORAGE === "local");
 
 // Откуда брать API, в порядке приоритета:
 //   1. адрес встроенного сервера, который передала десктопная оболочка;
@@ -19,7 +26,12 @@ export const isLocalStorage = isNative || process.env.REACT_APP_STORAGE === "loc
 const BACKEND_URL = apiBase || process.env.REACT_APP_BACKEND_URL || "";
 export const API = `${BACKEND_URL}/api`;
 
-const client = axios.create({ baseURL: API, timeout: 20000 });
+// На телефоне — тот же клиент, но запросы уходят в ядро, а не в сеть.
+const client = axios.create({
+  baseURL: usesCore ? "/api" : API,
+  timeout: usesCore ? 120000 : 20000,
+  ...(usesCore ? { adapter: coreAdapter } : {}),
+});
 
 // Встроенный сервер слушает только 127.0.0.1, но на localhost может
 // постучаться и посторонняя страница из браузера — поэтому общий секрет.
@@ -95,12 +107,35 @@ const offlineApi = {
   listTemplates: () => localApi.listTemplates({ lang: getLanguage() }),
 };
 
-export const api = isLocalStorage ? offlineApi : remoteApi;
+/**
+ * Ядро телефона: прежде чем отвечать, один раз переносит проекты из
+ * IndexedDB, где они жили до версии с ядром (lib/native/migrate.js). Каждый
+ * вызов ждёт этого переноса — список проектов не покажется пустым, пока
+ * старые проекты едут.
+ */
+function withMigration(target) {
+  let ready = null;
+  const once = () => {
+    if (!ready) {
+      ready = migrateIndexedDbToCore(target).catch(() => ({ moved: 0, failed: 0 }));
+    }
+    return ready;
+  };
+  const out = { migration: once };
+  for (const [name, fn] of Object.entries(target)) {
+    out[name] = async (...args) => { await once(); return fn(...args); };
+  }
+  return out;
+}
+
+export const api = usesCore ? withMigration(remoteApi) : isLocalStorage ? offlineApi : remoteApi;
 
 // Откуда <img> берёт картинку по ссылке bg-image. У сервера — обычный адрес:
 // токен идёт параметром, потому что заголовок картинке не передать. У
 // хранилища в приложении — Blob из IndexedDB.
-setImageResolver(isLocalStorage
+setImageResolver(usesCore
+  ? { url: () => "", load: (hash) => coreImage(hash) }
+  : isLocalStorage
   ? { url: () => "", load: (hash) => localApi.loadImage(hash) }
   : {
     url: (hash) => `${API}/images/${hash}${apiToken ? `?token=${encodeURIComponent(apiToken)}` : ""}`,

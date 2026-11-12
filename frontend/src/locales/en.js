@@ -855,6 +855,8 @@ const en = {
   },
   // Phone: bottom dock, sheets, touch hints.
   mobile: {
+    coreMigrated: "Projects moved to the new storage: {count}",
+    coreMigrateFailed: "Could not move {count} project(s). Your data is safe — we will retry on the next launch.",
     world: "World",
     worldTitle: "Whole world",
     time: "Time",

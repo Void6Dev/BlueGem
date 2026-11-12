@@ -1,2 +1,5 @@
 /build/*
 !/build/.npmkeep
+
+# Ядро на Rust собирается перед сборкой APK (scripts/build-android.mjs).
+/src/main/jniLibs/

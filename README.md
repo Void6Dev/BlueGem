@@ -71,13 +71,15 @@ BlueGem also runs on Android phones, with an interface built for one hand:
 * **Pinch** to zoom, drag with one finger to pan, the system **Back** button closes the top sheet.
 * **Share** a project as `.bgproj` or Markdown through the system share sheet; open a `.bgproj` from Files or a messenger straight into the app.
 
-Projects on the phone are stored inside the app (no server, no account) and move between devices as `.bgproj` files.
+Projects on the phone are stored inside the app (no server, no account) by the same Rust core as on the computer — the same SQLite database and the same rules for backups, images and sync — and move between devices as `.bgproj` files. Projects from older phone versions (stored in the browser's IndexedDB) are moved to the core automatically on first launch; the old copy is kept.
 
 **Install:** on the phone, open **[BlueGem.apk](https://github.com/Void6Dev/BlueGem/releases/download/android/BlueGem.apk)** and tap the downloaded file (allow installing from that source when Android asks). The link always points to the latest build; newer builds install over the old one and keep your projects. The same file is attached to the [BlueGem for Android](https://github.com/Void6Dev/BlueGem/releases/tag/android) release, which the desktop app ignores when it checks for updates.
 
-**Build it yourself** (Node 20+, JDK 21, Android SDK):
+**Build it yourself** (Node 20+, JDK 21, Android SDK with NDK, Rust with the Android targets and cargo-ndk):
 
 ```bash
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+cargo install cargo-ndk
 cd frontend && yarn install && cd ..
 npm run android:apk    # → frontend/android/app/build/outputs/apk/debug/app-debug.apk
 npm run android        # or open the project in Android Studio

@@ -5,6 +5,13 @@ edition = "2021"
 publish = false
 description = "Встроенный сервер BlueGem: API проектов над SQLite и раздача собранного интерфейса."
 
+# Ядро — библиотека: её используют и сервер для компьютера (bin ниже), и
+# приложение для Android (cdylib, libbluegem_core.so — см. src/android.rs).
+[lib]
+name = "bluegem_core"
+path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
+
 # Имя файла — то же, что было у замороженного Python-сервера: Electron
 # (electron/backend.js) и упаковка (electron-builder.yml) о смене не знают.
 [[bin]]
@@ -21,6 +28,11 @@ uuid = { version = "1", features = ["v4"] }
 sha2 = "0.10"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+tower = { version = "0.5", features = ["util"] }
+
+# Только для телефона: вызовы из Java (плагин Capacitor) в ядро.
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
 
 [profile.release]
 opt-level = 3

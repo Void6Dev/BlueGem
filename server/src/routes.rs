@@ -535,6 +535,14 @@ pub async fn not_found() -> impl IntoResponse {
     (StatusCode::NOT_FOUND, Json(json!({ "detail": "Not Found" })))
 }
 
+/// Маршруты API вместе с пределом на тело запроса — общее для сервера на
+/// компьютере и для ядра в телефоне.
+pub fn core_router(state: AppState) -> Router {
+    // Импорт проекта с картинками и замена содержимого при синхронизации —
+    // это мегабайты: штатного предела в 2 МБ на тело запроса мало.
+    api_router(state).layer(axum::extract::DefaultBodyLimit::max(1024 * 1024 * 1024))
+}
+
 pub fn api_router(state: AppState) -> Router {
     Router::new()
         .route("/api", get(root))
@@ -558,4 +566,50 @@ pub fn api_router(state: AppState) -> Router {
         .route("/api/projects/{id}/edges", post(create_edge))
         .route("/api/edges/{id}", put(update_edge).delete(delete_edge))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    // Так ядро работает в телефоне (src/android.rs): запрос проходит через
+    // маршрутизатор внутри процесса, без сокета.
+    use super::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    async fn call(app: &Router, method: &str, path: &str, body: &str) -> (u16, Value) {
+        let req = Request::builder()
+            .method(method)
+            .uri(path)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap();
+        let res = app.clone().oneshot(req).await.unwrap();
+        let status = res.status().as_u16();
+        let bytes = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    }
+
+    #[tokio::test]
+    async fn in_process_requests() {
+        let dir = std::env::temp_dir().join(format!("bluegem-core-{}", store::new_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let st = Store::open(dir.join("core.db").to_str().unwrap()).unwrap();
+        let app = core_router(AppState { store: Arc::new(st), version: "test".into() });
+
+        let (s, p) = call(&app, "POST", "/api/projects", r#"{"name":"Мир","lang":"ru"}"#).await;
+        assert_eq!(s, 200);
+        let pid = p["id"].as_str().unwrap().to_string();
+        let (s, n) = call(&app, "POST", &format!("/api/projects/{pid}/nodes"), r#"{"title":"Анна"}"#).await;
+        assert_eq!(s, 200);
+        assert_eq!(n["title"], "Анна");
+        let (_, g) = call(&app, "GET", &format!("/api/projects/{pid}/graph"), "").await;
+        assert_eq!(g["nodes"].as_array().unwrap().len(), 1);
+        let (s, e) = call(&app, "GET", "/api/projects/nope", "").await;
+        assert_eq!(s, 404);
+        assert_eq!(e["detail"]["code"], "projectNotFound");
+        let (_, t) = call(&app, "GET", "/api/templates?lang=ru", "").await;
+        assert_eq!(t[0]["types"][0]["label"], "Персонаж");
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

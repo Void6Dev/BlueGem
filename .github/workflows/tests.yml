@@ -3,7 +3,8 @@
 #     и проверки API по HTTP (server/api_tests, pytest), включая открытие
 #     базы, созданной BlueGem 1.5.0;
 #   * frontend — Jest: слияние для синхронизации, поиск, обратные ссылки,
-#     правила резервных копий и хранилище телефона (IndexedDB);
+#     правила резервных копий, старое хранилище телефона (IndexedDB) и путь
+#     телефона через ядро на Rust с переносом проектов из IndexedDB;
 #   * e2e — Playwright в настоящем браузере: собранный интерфейс, настоящий
 #     сервер, в том числе синхронизация между двумя «компьютерами».
 name: Tests
@@ -79,6 +80,14 @@ jobs:
           node-version: 22
           cache: yarn
           cache-dependency-path: frontend/yarn.lock
+      # Тест ядра телефона (nativeCore.test.js) гоняет настоящее ядро на Rust.
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      - run: cargo build --release --locked
+        working-directory: server
       - run: yarn install --frozen-lockfile --ignore-engines
         working-directory: frontend
       - run: yarn test --watchAll=false
