@@ -2928,3 +2928,62 @@ kbd {
 .sw-mde-lg .sw-md-doc { font-size: 15px; line-height: 1.8; }
 .sw-mde-lg .sw-mde-type { font-size: 14px; line-height: 1.85; padding: 0.35em 0.6em; }
 .sw-mde-lg .sw-mde-stack, .sw-mde-lg .sw-mde-preview { margin: 0 -0.6em; }
+
+/* ---------------- выбор сторон связи (components/SidePicker.jsx) ---------------- */
+.sw-side-picker {
+  display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
+  padding: 6px 8px; border-radius: 12px;
+  background: color-mix(in srgb, var(--sw-surface-2, var(--sw-surface)) 80%, transparent);
+  border: 1px solid var(--sw-border);
+  max-width: 100%;
+}
+.sw-side-card {
+  display: inline-flex; align-items: center; min-width: 0; flex: 1 1 0;
+  border-radius: 8px; border: 1px solid var(--sw-border-strong, var(--sw-border));
+  background: var(--sw-surface); height: 30px;
+}
+.sw-side-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; text-align: center; padding: 0 2px;
+}
+.sw-side-dot {
+  flex: none; width: 26px; height: 30px; display: grid; place-items: center;
+  margin: 0 -6px; position: relative; z-index: 1;
+}
+.sw-side-dot i {
+  width: 11px; height: 11px; border-radius: 50%;
+  border: 2px solid var(--sw-text-dim); background: var(--sw-surface);
+  transition: transform .16s var(--sw-ease, ease), background-color .16s, border-color .16s;
+}
+.sw-side-dot:hover i { border-color: var(--sw-accent); }
+.sw-side-dot.is-on i { background: var(--sw-accent); border-color: var(--sw-accent); transform: scale(1.18); }
+.sw-side-arrow {
+  flex: none; width: 18px; height: 2px; background: var(--sw-text-dim); position: relative;
+}
+.sw-side-arrow::after {
+  content: ""; position: absolute; right: -1px; top: -3px;
+  border: 4px solid transparent; border-left-color: var(--sw-text-dim); border-right: 0;
+}
+.sw-side-auto {
+  flex: none; font-size: 11px; padding: 4px 8px; border-radius: 999px;
+  border: 1px solid var(--sw-border); color: var(--sw-text-dim);
+}
+.sw-side-auto.is-on { color: var(--sw-accent); border-color: color-mix(in srgb, var(--sw-accent) 60%, transparent); }
+.sw-is-mobile .sw-side-dot { width: 34px; height: 38px; }
+.sw-is-mobile .sw-side-card { height: 38px; }
+.sw-is-mobile .sw-side-name { font-size: 13px; }
+.sw-is-mobile .sw-side-auto { font-size: 12px; padding: 7px 10px; }
+
+.sw-link-bar { width: min(560px, calc(100% - 32px)); transform: translateX(-50%); }
+
+/* Смена экрана (Мир / Хронология): приезд снизу и уход, а не подмена за кадр. */
+@keyframes swViewIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes swViewOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(8px); } }
+.sw-world, .tl-root { animation: swViewIn 0.24s var(--sw-ease-emph, cubic-bezier(0.22, 1, 0.36, 1)) both; }
+.sw-world.is-leaving, .tl-root.is-leaving {
+  animation: swViewOut 0.2s ease-in forwards;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sw-world, .tl-root, .sw-world.is-leaving, .tl-root.is-leaving { animation-duration: 1ms; }
+}

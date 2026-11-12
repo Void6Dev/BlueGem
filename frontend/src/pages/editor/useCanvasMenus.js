@@ -21,7 +21,7 @@ export function useCanvasMenus(ctx) {
     deleteSelectedEdge, duplicateNode, expandedId, focusNode, mainCanvasId, mobile,
     moveNodesToCanvas, nodeTitles, openNodeById, pasteNodes, peekNode, quickSetRelType,
     relTypes, resizeNode, rf, rfEdges, runLayout, saveAsTemplate, selectAllVisible,
-    setEdgeShape, setExpandedId, setLinkSource, setMenu, setNodeCardMode, setSelectedEdge,
+    setEdgeShape, setEdgeSides, setExpandedId, setLinkSource, setMenu, setNodeCardMode, setSelectedEdge,
     settings, straightenEdge, swapEdgeDirection, templateItems, tr, undo, undoRef, unlinkAll,
   } = ctx;
 
@@ -202,6 +202,27 @@ export function useCanvasMenus(ctx) {
           })),
         },
         { id: "swap", label: tr("ctx.swapDirection"), icon: ArrowLeftRight, onSelect: () => swapEdgeDirection(edge) },
+        // Стороны карточек, к которым прикреплена линия: у каждой — слева или справа.
+        {
+          id: "edge-sides",
+          label: tr("sides.menu"),
+          icon: ArrowLeftRight,
+          items: [
+            ...["l", "r"].map((side) => ({
+              id: `side-from-${side}`,
+              label: tr("sides.fromItem", { name: nodeTitles[edge.source] || "?", side: tr(side === "l" ? "sides.left" : "sides.right") }),
+              checked: (edge.sourceHandle || "l") === side,
+              onSelect: () => setEdgeSides(edge, { sourceHandle: side }),
+            })),
+            { id: "side-sep", separator: true },
+            ...["l", "r"].map((side) => ({
+              id: `side-to-${side}`,
+              label: tr("sides.toItem", { name: nodeTitles[edge.target] || "?", side: tr(side === "l" ? "sides.left" : "sides.right") }),
+              checked: (edge.targetHandle || "l") === side,
+              onSelect: () => setEdgeSides(edge, { targetHandle: side }),
+            })),
+          ],
+        },
         { id: "sep-edge-shape", separator: true },
         // Крепления ставятся протяжкой самой линии, но узнать об этом неоткуда —
         // поэтому то же самое лежит и в меню, вместе со «выпрямить».
@@ -245,9 +266,9 @@ export function useCanvasMenus(ctx) {
         { id: "goto-target", label: tr("ctx.goTo", { name: nodeTitles[edge.target] || tr("ctx.node") }), icon: Target, onSelect: () => openNodeById(edge.target) },
         { id: "sep-edge-del", separator: true },
         { id: "del-edge", label: tr("ctx.deleteEdge"), icon: Trash2, danger: true, onSelect: () => deleteSelectedEdge(edge.id) },
-      ], ["rel-type", "swap", "goto-source", "goto-target", "del-edge"]),
+      ], ["rel-type", "swap", "edge-sides", "goto-source", "goto-target", "del-edge"]),
     });
-  }, [nodeTitles, closeAll, quickSetRelType, swapEdgeDirection, openNodeById, deleteSelectedEdge,
+  }, [nodeTitles, closeAll, quickSetRelType, swapEdgeDirection, openNodeById, deleteSelectedEdge, setEdgeSides,
       rf, settings, relTypes, addEdgePoint, straightenEdge, setEdgeShape, forPhone]);
 
   const openPaneMenu = useCallback((e) => {

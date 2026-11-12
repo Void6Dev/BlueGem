@@ -468,6 +468,20 @@ const en = {
     fieldKeyPlaceholder: "Add a suggestion and press Enter",
   },
 
+  sides: {
+    auto: "Auto",
+    autoHint: "Sides by card position: target to the right — right to left, to the left — the other way",
+    other: "other node",
+    title: "Sides",
+    from: { l: "Leaves on the left", r: "Leaves on the right" },
+    to: { l: "Enters on the left", r: "Enters on the right" },
+    menu: "Link sides",
+    fromItem: "From “{name}”: {side}",
+    toItem: "Into “{name}”: {side}",
+    left: "left",
+    right: "right",
+  },
+
   templates: {
     title: "Templates",
     saveAs: "Save as template",

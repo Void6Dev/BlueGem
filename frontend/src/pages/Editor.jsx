@@ -30,6 +30,7 @@ import {
 import { nodeBody } from "@/lib/search";
 import { backlinksOf } from "@/lib/backlinks";
 import { makeTemplate, nodeFromTemplate, templatesOf } from "@/lib/nodeTemplates";
+import SidePicker, { resolveSides } from "@/components/SidePicker";
 import NodePreview from "@/components/NodePreview";
 import EditorTopBar from "@/components/EditorTopBar";
 import WorldTree from "@/components/WorldTree";
@@ -44,6 +45,7 @@ import {
 import MobileWorld from "@/components/mobile/MobileWorld";
 import { haptic, isMobileNow, useBackHandler, useIsMobile } from "@/lib/platform";
 import { useLongPress } from "@/lib/useLongPress";
+import { usePresence } from "@/lib/usePresence";
 
 /* Панели и оверлеи — отдельными кусками сборки.
  *
@@ -113,6 +115,9 @@ function EditorInner() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [menu, setMenu] = useState(null);         // right-click menu descriptor
   const [linkSource, setLinkSource] = useState(null); // "connect from this node" mode
+  // Стороны, к которым прикрепить связь в режиме «Связать с…» (SidePicker).
+  const [linkSides, setLinkSides] = useState({ from: "auto", to: "auto" });
+  useEffect(() => { if (linkSource) setLinkSides({ from: "auto", to: "auto" }); }, [linkSource]);
   const [dragType, setDragType] = useState(null); // тип, который тянут из палитры
   const [sidebar, setSidebar] = useState(readSidebarPrefs);
   const [search, setSearch] = useState("");
@@ -126,9 +131,13 @@ function EditorInner() {
   const [mSheet, setMSheet] = useState(null); // "create" | "canvases" | null
   // Телефон: главный экран проекта — мир списком; холст — вторая вкладка.
   const [mView, setMView] = useState("world"); // "world" | "canvas"
+  // Экраны «Мир» и «Хронология» уходят с анимацией, а не исчезают за кадр.
+  const worldView = usePresence(mobile && mView === "world" && !showTimeline, 200);
+  const timelineView = usePresence(showTimeline, 200);
   // Узлы, через которые пришли по связям: «назад» на странице узла ведёт к
   // предыдущему, а не сразу к миру.
   const trailRef = useRef([]);
+  const navDirRef = useRef("forward");
   // Длина истории — состоянием: кнопка «Отменить» на телефоне должна гаснуть,
   // когда отменять нечего, а ref об этом никому не сообщает.
   const [undoCount, setUndoCount] = useState(0);
@@ -177,6 +186,23 @@ function EditorInner() {
     : [{ id: "main", label: tr("editor.mainCanvas") }]), [settings, tr]);
   const mainCanvasId = canvases[0].id;
   const activeCanvas = canvases.some((c) => c.id === currentCanvas) ? currentCanvas : mainCanvasId;
+
+  // Смена холста: карточки въезжают с той стороны, где холст стоит в списке,
+  // — видно, что переключились на соседний, а не что всё вдруг пропало.
+  const prevCanvasRef = useRef(activeCanvas);
+  useEffect(() => {
+    const prev = prevCanvasRef.current;
+    prevCanvasRef.current = activeCanvas;
+    if (!prev || prev === activeCanvas) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const order = canvases.map((c) => c.id);
+    const dir = order.indexOf(activeCanvas) >= order.indexOf(prev) ? 1 : -1;
+    paneRef.current?.querySelector(".react-flow__renderer")?.animate?.(
+      [{ opacity: 0, transform: `translateX(${dir * 40}px)` }, { opacity: 1, transform: "none" }],
+      { duration: 280, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+    );
+    // eslint-disable-next-line
+  }, [activeCanvas]);
   const nodeCanvas = useCallback((n) => n.data.canvas || mainCanvasId, [mainCanvasId]);
 
   const mapNode = useCallback((n, types) => ({
@@ -357,6 +383,8 @@ function EditorInner() {
     if (!found) return;
     const cur = panelRef.current;
     if (mobile && !opts.back && cur.open && cur.id && cur.id !== nodeId) trailRef.current.push(cur.id);
+    // Куда «едет» страница узла: вперёд по ссылке или назад по следу.
+    navDirRef.current = opts.back ? "back" : "forward";
     // Jumping to a node on another canvas should switch canvases too.
     const canvasOf = found.data.canvas || mainCanvasId;
     if (canvasOf !== activeCanvas) setCurrentCanvas(canvasOf);
@@ -779,10 +807,24 @@ function EditorInner() {
 
   /* ---------------- react flow handlers ---------------- */
 
+  /** Стороны новой связи: выбранные явно или по положению карточек. */
+  const sidesFor = useCallback((source, target, pick) => {
+    const box = (nid) => {
+      const n = rf.getNode(nid);
+      return { x: n?.position?.x || 0, w: n?.measured?.width || n?.data?.width || NODE_W };
+    };
+    return resolveSides(pick, box(source), box(target));
+  }, [rf]);
+
   const connectNodes = useCallback(async (source, target, patch = {}, opts = {}) => {
     if (!source || !target || source === target) return null;
+    // Протянутая мышью связь приходит со своими точками; созданная через
+    // интерфейс — без них, и тогда стороны выбираются (SidePicker) или
+    // ставятся по положению карточек. Раньше такая связь цеплялась к первой
+    // точке — левой у обеих карточек.
+    const sides = patch.sourceHandle || patch.targetHandle ? {} : sidesFor(source, target, opts.sides);
     try {
-      const edge = await api.createEdge(id, { source, target, ...patch });
+      const edge = await api.createEdge(id, { source, target, ...sides, ...patch });
       if (opts.undo !== false) undoCreated([], [edge.id]);
       // sw-edge-new: линия прочерчивается от источника к цели за 260 мс —
       // ощущение, что действие сработало, стоит четырёх строк CSS.
@@ -798,7 +840,21 @@ function EditorInner() {
       toast.error(apiErrorMessage(e, "errors.createEdge"));
       return null;
     }
-  }, [id, settings, setRfEdges, updateNodeInternals, undoCreated]);
+  }, [id, settings, setRfEdges, updateNodeInternals, undoCreated, sidesFor]);
+
+  /** Сменить стороны готовой связи (меню связи → «Стороны связи»). */
+  const setEdgeSides = useCallback(async (edge, patch) => {
+    undoEdgePatch([{ id: edge.id, before: {
+      sourceHandle: edge.sourceHandle || "", targetHandle: edge.targetHandle || "",
+    } }]);
+    try {
+      const updated = await api.updateEdge(edge.id, patch);
+      setRfEdges((eds) => eds.map((e) => (e.id === edge.id ? toRfEdge(updated, settings) : e)));
+      updateNodeInternals([edge.source, edge.target]);
+    } catch (e) {
+      toast.error(apiErrorMessage(e, "errors.changeEdge"));
+    }
+  }, [settings, setRfEdges, undoEdgePatch, updateNodeInternals]);
 
   const onConnect = useCallback(
     (conn) => connectNodes(conn.source, conn.target, {
@@ -991,7 +1047,7 @@ function EditorInner() {
     // While "связать с…" is armed, the next node click closes the link.
     if (linkSource) {
       if (linkSource !== node.id) {
-        connectNodes(linkSource, node.id).then((e) => {
+        connectNodes(linkSource, node.id, {}, { sides: linkSides }).then((e) => {
           if (!e) return;
           haptic("success");
           toast.success(tr("editor.toasts.edgeCreated"));
@@ -1032,7 +1088,7 @@ function EditorInner() {
           { zoom, duration: 300 });
       }
     }
-  }, [linkSource, connectNodes, mobile, rf, openNodeById]);
+  }, [linkSource, linkSides, connectNodes, mobile, rf, openNodeById]);
 
   const onNodeDoubleClick = useCallback((_, node) => {
     setPreviewId(null);
@@ -1990,7 +2046,7 @@ function EditorInner() {
     deleteSelectedEdge, duplicateNode, expandedId, focusNode, mainCanvasId, mobile,
     moveNodesToCanvas, nodeTitles, openNodeById, pasteNodes, peekNode, quickSetRelType,
     relTypes, resizeNode, rf, rfEdges, runLayout, saveAsTemplate, selectAllVisible,
-    setEdgeShape, setExpandedId, setLinkSource, setMenu, setNodeCardMode, setSelectedEdge,
+    setEdgeShape, setEdgeSides, setExpandedId, setLinkSource, setMenu, setNodeCardMode, setSelectedEdge,
     settings, straightenEdge, swapEdgeDirection, templateItems, tr, undo, undoRef, unlinkAll,
   });
 
@@ -2252,6 +2308,10 @@ function EditorInner() {
             ? canvases.find((c) => c.id === activeCanvas)?.label || ""
             : tr("count.nodes", { count: rfNodes.length })}
           onBack={() => navigate("/")}
+          canvases={canvases}
+          activeCanvas={activeCanvas}
+          onPickCanvas={(cid) => setCurrentCanvas(cid)}
+          wheel={mView === "canvas" && !showTimeline}
           onCanvases={() => { haptic("tick"); setMSheet("canvases"); }}
           onSearch={() => setShowPalette(true)}
           onSettings={() => { closeAll(); setShowSettings(true); }}
@@ -2654,12 +2714,20 @@ function EditorInner() {
         {/* Link mode hint */}
         {linkSource && (
           <div
-            className="sw-mfloat absolute bottom-4 left-1/2 px-3.5 py-2 rounded-full sw-glass text-xs flex items-center gap-2 z-10 sw-rise"
+            className="sw-mfloat sw-link-bar absolute bottom-4 left-1/2 px-3.5 py-2.5 rounded-2xl sw-glass text-xs flex flex-col items-stretch gap-2 z-10 sw-rise"
             data-testid="link-mode-bar"
           >
-            <Link2 className="w-3.5 h-3.5 sw-accent-text" />
-            {tr(mobile ? "mobile.linkHint" : "editor.linkHint", { name: nodeTitles[linkSource] || tr("ctx.node") })}
-            <button onClick={() => setLinkSource(null)} className="sw-accent-text">{tr("editor.linkCancel")}</button>
+            <span className="flex items-center gap-2">
+              <Link2 className="w-3.5 h-3.5 sw-accent-text shrink-0" />
+              <span className="min-w-0">{tr(mobile ? "mobile.linkHint" : "editor.linkHint", { name: nodeTitles[linkSource] || tr("ctx.node") })}</span>
+              <button onClick={() => setLinkSource(null)} className="sw-accent-text shrink-0">{tr("editor.linkCancel")}</button>
+            </span>
+            {/* Куда прикрепить связь — выбирают здесь же, до касания цели. */}
+            <SidePicker
+              value={linkSides}
+              onChange={setLinkSides}
+              fromLabel={nodeTitles[linkSource] || tr("ctx.node")}
+            />
           </div>
         )}
 
@@ -2739,10 +2807,11 @@ function EditorInner() {
             занимает место холста под верхней панелью, а переключают его там же,
             где выбирают вид. Холст под ним остаётся смонтированным — вернуться
             на него стоит одного кадра, а не пересборки графа. */}
-        {showTimeline && (
+        {timelineView.mounted && (
           <Suspense fallback={null}>
             <TimelinePanel
               key="timeline"
+              leaving={timelineView.leaving}
               chrono={chrono}
               settings={settings}
               edges={rfEdges}
@@ -2758,8 +2827,9 @@ function EditorInner() {
 
         {/* Мир списком поверх холста: холст под ним остаётся смонтированным, и
             переход на вкладку «Холст» стоит одного кадра, а не пересборки. */}
-        {mobile && mView === "world" && !showTimeline && (
+        {worldView.mounted && (
           <MobileWorld
+            leaving={worldView.leaving}
             nodes={nodeContent}
             types={settings.nodeTypes || []}
             degrees={degrees}
@@ -2816,9 +2886,14 @@ function EditorInner() {
               const n = rf.getNode(selectedNode.id);
               if (n) changeNodeType(n, typeId);
             }}
-            onLink={(targetId) => connectNodes(selectedNode.id, targetId)
+            onLink={(targetId, sides) => connectNodes(selectedNode.id, targetId, {}, { sides })
               .then((e) => e && toast.success(tr("editor.toasts.edgeCreated")))}
             onUnlink={deleteSelectedEdge}
+            navDir={navDirRef.current}
+            // Куда вернёт «назад»: имя предыдущего узла рядом со стрелкой.
+            backLabel={mobile && trailRef.current.length
+              ? nodeTitles[trailRef.current[trailRef.current.length - 1]] || ""
+              : ""}
             onBack={mobile ? () => {
               const prev = trailRef.current.pop();
               if (prev && rf.getNode(prev)) openNodeById(prev, { back: true });

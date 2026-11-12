@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, useRef, useCallback } from "react";
+import { useLayoutEffect, lazy, Suspense, useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import DockShell from "@/components/mobile/DockShell";
@@ -20,6 +20,7 @@ import { isMobileNow, pushBack, useIsMobile } from "@/lib/platform";
 import MobileDescription from "@/components/mobile/MobileDescription";
 import { tList, useT } from "@/lib/i18n";
 import { isImageRef, useImageSrc } from "@/lib/images";
+import SidePicker from "@/components/SidePicker";
 
 const RAIL_SPRING = { type: "spring", stiffness: 420, damping: 34 };
 
@@ -57,7 +58,7 @@ const IMAGE_MAX_CHARS = 300 * 1024;
 
 export default function NodeEditorPanel({
   node, nodeTypes, onClose, onSave, onDelete, onDuplicate, onLiveChange, focusField,
-  allNodes = [], allTags = [], connections = [], mentions = [], onOpenNode, onCreateNode, canvases = [],
+  allNodes = [], allTags = [], connections = [], mentions = [], onOpenNode, navDir = "forward", backLabel = "", onCreateNode, canvases = [],
   calendar, eras = [], fieldTemplates: projectFields, onChangeType, onLink, onUnlink,
   // Телефон: узел — страница. «Назад» (к прошлому узлу или к миру), меню типа и «⋯».
   onBack, onTypeMenu, onMore,
@@ -69,6 +70,8 @@ export default function NodeEditorPanel({
   const [urlOpen, setUrlOpen] = useState(false);
   const imageSrc = useImageSrc(draft?.image || "");
   const [linkOpen, setLinkOpen] = useState(false);
+  // К каким сторонам карточек прикрепить новую связь (SidePicker).
+  const [linkSides, setLinkSides] = useState({ from: "auto", to: "auto" });
   const [linkQuery, setLinkQuery] = useState("");
   const [tagInput, setTagInput] = useState("");
   const [descFull, setDescFull] = useState(false); // описание на весь экран
@@ -92,6 +95,7 @@ export default function NodeEditorPanel({
   useEffect(() => () => liveFlush.current?.(), []);
   const titleRef = useRef(null);
   const scrollRef = useRef(null);
+  const headRef = useRef(null);
   const timerRef = useRef(null);
   const draftRef = useRef(null);
   const statusRef = useRef("idle");
@@ -165,6 +169,24 @@ export default function NodeEditorPanel({
 
   draftRef.current = draft;
   statusRef.current = status;
+
+  // Другой узел в той же панели (переход по ссылке или связи, «назад»):
+  // содержимое въезжает с той стороны, куда идём, а не подменяется разом.
+  const shownId = useRef(nodeId);
+  useLayoutEffect(() => {
+    if (shownId.current === nodeId) return;
+    const first = shownId.current == null;
+    shownId.current = nodeId;
+    if (first || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const dx = navDir === "back" ? -28 : 28;
+    for (const el of [headRef.current, scrollRef.current]) {
+      el?.animate?.(
+        [{ opacity: 0, transform: `translateX(${dx}px)` }, { opacity: 1, transform: "none" }],
+        { duration: 240, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+      );
+    }
+    scrollRef.current?.scrollTo?.({ top: 0 });
+  }, [nodeId, navDir]);
 
   const flush = useCallback(async () => {
     if (!draftRef.current || status === "idle") return;
@@ -350,7 +372,7 @@ export default function NodeEditorPanel({
       .slice(0, 8)
     : [];
   const pickLink = (targetId) => {
-    onLink?.(targetId);
+    onLink?.(targetId, linkSides);
     setLinkQuery("");
     setLinkOpen(false);
   };
@@ -396,10 +418,11 @@ export default function NodeEditorPanel({
       {mobile ? (
         // Телефон: узел — страница. Сверху «назад», тип (касание — сменить) и
         // «⋯»; ниже крупное название — сразу в поле, без режима правки.
-        <div className="sw-npage-head sw-typed" style={{ "--node-color": activeType?.color || "#64748b" }}>
+        <div ref={headRef} className="sw-npage-head sw-typed" style={{ "--node-color": activeType?.color || "#64748b" }}>
           <div data-sheet-drag="" className="sw-npage-bar">
             <button type="button" className="sw-icon-btn" onClick={onBack || onClose} data-testid="close-editor-btn" aria-label={tr("node.close")}>
               <ArrowLeft className="w-[22px] h-[22px]" />
+              {backLabel && <span className="sw-npage-back" data-testid="node-back-label">{backLabel}</span>}
             </button>
             <button
               type="button"
@@ -429,6 +452,7 @@ export default function NodeEditorPanel({
         </div>
       ) : (
       <div
+        ref={headRef}
         className="sw-typed px-6 pt-4 pb-3 border-b sw-border-c"
         style={{ "--node-color": activeType?.color || "#64748b" }}
       >
@@ -627,7 +651,7 @@ export default function NodeEditorPanel({
               <button
                 type="button"
                 data-testid="add-link-btn"
-                onClick={() => { setLinkOpen((v) => !v); setLinkQuery(""); }}
+                onClick={() => { setLinkOpen((v) => !v); setLinkQuery(""); setLinkSides({ from: "auto", to: "auto" }); }}
                 className="flex items-center gap-1 text-xs sw-accent-text hover:opacity-80"
               >
                 <Plus className="w-3.5 h-3.5" /> {tr("node.linkTo")}
@@ -636,6 +660,14 @@ export default function NodeEditorPanel({
           </div>
           {linkOpen && (
             <div className="mt-2 rounded-lg border sw-border-c sw-surface p-1" data-testid="link-picker">
+              <div className="p-1 pb-1.5">
+                <SidePicker
+                  value={linkSides}
+                  onChange={setLinkSides}
+                  fromLabel={draft.title || tr("common.untitled")}
+                  compact
+                />
+              </div>
               <Input
                 autoFocus
                 data-testid="link-search-input"

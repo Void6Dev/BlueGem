@@ -36,6 +36,7 @@ const GROUPINGS = ["none", "type", "era"];
 const OVERSCAN = 8;
 
 export default function TimelinePanel({
+  leaving = false,
   chrono, settings, edges, typesById, allNodes,
   onOpenNode, onOpenSettings, onChangeDates, onClose,
 }) {
@@ -240,7 +241,7 @@ export default function TimelinePanel({
   );
 
   return (
-    <div className="tl-root" data-testid="timeline-panel">
+    <div className={`tl-root ${leaving ? "is-leaving" : ""}`} data-testid="timeline-panel">
       <header className="tl-head">
         <span className="tl-head-title">
           <CalendarRange className="w-3.5 h-3.5" /> {tr("timeline.title")}

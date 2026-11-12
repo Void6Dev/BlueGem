@@ -97,6 +97,12 @@ function wiki(name, key) {
   const shown = rest.join("|").trim() || clean;
   if (!opts.doc) return <span key={key} className="sw-accent-text">{shown}</span>;
   const id = opts.nodesByTitle?.[clean.toLowerCase()];
+  // Обработчики берём сейчас, при разборе, а не в момент нажатия: opts —
+  // общая переменная разбора, и после него она сбрасывается в { doc: false }.
+  // Раньше нажатие на ссылку читало opts уже сброшенным — и ничего не
+  // происходило: ни переход к узлу, ни предложение его завести.
+  const open = opts.onOpenNode;
+  const create = opts.onCreateNode;
   // Статичный документ (книга мира в HTML): ссылка — обычный якорь на раздел
   // узла, без обработчиков; несуществующий узел — просто текст.
   if (opts.hrefFor) {
@@ -109,7 +115,7 @@ function wiki(name, key) {
       <button
         key={key}
         type="button"
-        onClick={(e) => { e.preventDefault(); opts.onOpenNode?.(id); }}
+        onClick={(e) => { e.preventDefault(); open?.(id); }}
         className="sw-accent-text underline underline-offset-2 hover:opacity-80"
       >
         {shown}
@@ -121,7 +127,7 @@ function wiki(name, key) {
       key={key}
       type="button"
       title={opts.onCreateNode ? opts.createTitle?.(clean) : opts.missingTitle}
-      onClick={(e) => { e.preventDefault(); opts.onCreateNode?.(clean); }}
+      onClick={(e) => { e.preventDefault(); create?.(clean); }}
       className="sw-text-dim underline decoration-dashed underline-offset-2 hover:sw-accent-text"
     >
       {shown}

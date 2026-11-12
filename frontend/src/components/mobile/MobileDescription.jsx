@@ -56,7 +56,14 @@ export default function MobileDescription({ value, onChange, nodes = [], onOpenN
       }}
     >
       {value?.trim() ? (
-        <MarkdownView text={value} nodes={nodes} onOpenNode={onOpenNode} onCreateNode={onCreateNode} />
+        <MarkdownView
+          text={value}
+          nodes={nodes}
+          // Касание ссылки — короткий отклик пальцу: переход случился, а не
+          // текст ушёл в правку.
+          onOpenNode={(nid) => { haptic("tick"); onOpenNode?.(nid); }}
+          onCreateNode={onCreateNode}
+        />
       ) : (
         <span className="sw-mdesc-empty">{placeholder || t("mobile.writeHere")}</span>
       )}

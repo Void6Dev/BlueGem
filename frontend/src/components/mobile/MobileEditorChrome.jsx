@@ -6,6 +6,7 @@ import {
   Plus, Search, Settings, Share2, Shapes, X,
 } from "lucide-react";
 import Sheet, { useSheet } from "@/components/mobile/Sheet";
+import CanvasWheel from "@/components/mobile/CanvasWheel";
 import { NodeIcon } from "@/components/NodeIcon";
 import { haptic } from "@/lib/platform";
 import { useT } from "@/lib/i18n";
@@ -22,21 +23,37 @@ import { useT } from "@/lib/i18n";
 
 export function MobileTopBar({
   projectName, canvasLabel, onBack, onCanvases, onSearch, onSettings,
+  canvases = [], activeCanvas, onPickCanvas, wheel = false,
 }) {
   const t = useT();
+  // Колесо холстов — на холсте и когда холстов больше одного: с одним
+  // крутить нечего, а на экране «Мир» страница ни о чём не говорит.
+  const showWheel = wheel && canvases.length > 1;
   return (
-    <header className="sw-mtop sw-topbar-in" data-testid="mobile-topbar">
+    <header className={`sw-mtop sw-topbar-in ${showWheel ? "has-wheel" : ""}`} data-testid="mobile-topbar">
       <button type="button" className="sw-icon-btn" onClick={onBack} data-testid="back-btn" aria-label={t("common.projects")}>
         <ArrowLeft className="w-[22px] h-[22px]" />
       </button>
-      <button type="button" className="sw-mtop-title" onClick={onCanvases} data-testid="mobile-canvas-btn">
-        <span className="sw-mtop-name">{projectName}</span>
-        <span className="sw-mtop-canvas">
-          <i />
-          <span>{canvasLabel}</span>
-          <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-70" />
-        </span>
-      </button>
+      {showWheel ? (
+        <div className="sw-mtop-title is-wheel">
+          <span className="sw-mtop-name">{projectName}</span>
+          <CanvasWheel
+            canvases={canvases}
+            active={activeCanvas}
+            onPick={onPickCanvas}
+            onOpenList={onCanvases}
+          />
+        </div>
+      ) : (
+        <button type="button" className="sw-mtop-title" onClick={onCanvases} data-testid="mobile-canvas-btn">
+          <span className="sw-mtop-name">{projectName}</span>
+          <span className="sw-mtop-canvas">
+            <i />
+            <span>{canvasLabel}</span>
+            <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-70" />
+          </span>
+        </button>
+      )}
       <button type="button" className="sw-icon-btn" onClick={onSearch} data-testid="open-palette-btn" aria-label={t("editor.findOrDo")}>
         <Search className="w-[21px] h-[21px]" />
       </button>

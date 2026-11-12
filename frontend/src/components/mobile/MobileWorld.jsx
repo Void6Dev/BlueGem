@@ -29,6 +29,7 @@ function excerpt(md) {
 }
 
 export default function MobileWorld({
+  leaving = false,
   nodes, types, degrees, canvases, mainCanvasId, onOpen, onContextMenu, onCreate,
 }) {
   const t = useT();
@@ -65,7 +66,7 @@ export default function MobileWorld({
   }, [nodes, types, q, type, t]);
 
   return (
-    <div className="sw-world" data-testid="mobile-world">
+    <div className={`sw-world ${leaving ? "is-leaving" : ""}`} data-testid="mobile-world">
       <div className="sw-world-top">
         <div className="sw-msearch !m-0">
           <Search className="sw-msearch-icon" />
