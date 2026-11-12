@@ -6,7 +6,6 @@
   "loggingBehavior": "debug",
   "android": {
     "allowMixedContent": false,
-    "captureInput": true,
     "webContentsDebuggingEnabled": false
   },
   "plugins": {
